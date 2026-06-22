@@ -1,0 +1,275 @@
+"""
+Best-first proof search.
+
+Algorithm:
+  - Maintain a priority queue of (neg_log_prob, SearchNode).
+  - Each node holds the current proof state and the tactic sequence used to reach it.
+  - At each step: pop the best node, query the tactic model for top-k candidates,
+    submit each to Lean via LeanDojo, push successful states back onto the queue.
+  - Terminate when a node has no remaining goals (proof complete) or timeout/depth exceeded.
+
+Two operating modes:
+  Interactive (full):  Uses LeanDojo's Dojo for tactic-by-tactic feedback.
+                       Requires GITHUB_ACCESS_TOKEN. Lean process stays alive
+                       between tactics so startup cost (~2-3 min) is paid once.
+  Whole-proof (fast):  Generates complete proof candidates with beam search /
+                       sampling, verifies each candidate with a subprocess call.
+                       No token required; each Lean call takes 2-5 min cold-start.
+                       Best for short proofs where top-k=1 often works.
+
+This is greedy best-first search, not MCTS. MCTS can be added later.
+"""
+
+from __future__ import annotations
+
+import heapq
+import logging
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+from .lean_interface import LeanInterface, StepResult, format_state_for_model
+from .tactic_model import TacticModel, TacticCandidate
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ProofResult:
+    """Returned by ProofSearch.prove()."""
+    proof: Optional[str]     # tactic proof string (e.g. "intro n\nsimp"), or None
+    verified: bool           # did Lean accept the proof?
+    steps: list[tuple[str, str]]  # list of (state, tactic) pairs
+    search_nodes_expanded: int
+    elapsed_seconds: float
+    error: str = ""          # set if something failed unexpectedly
+
+
+@dataclass(order=True)
+class _SearchNode:
+    """Node in the proof search tree."""
+    neg_log_prob: float             # priority (lower = better, for min-heap)
+    state: str = field(compare=False)
+    tactic_history: list[str] = field(compare=False, default_factory=list)
+    state_history: list[str] = field(compare=False, default_factory=list)
+    depth: int = field(compare=False, default=0)
+
+
+class ProofSearch:
+    """
+    End-to-end proof search: model + search + Lean verification.
+
+    Args:
+        model_path:    Path to a local HuggingFace checkpoint, or a HuggingFace
+                       model id. Defaults to the small ReProver checkpoint.
+        lean_project:  Path to the Lean 4 project directory (must have lakefile.lean).
+        top_k:         Number of tactic candidates to generate per step.
+        device:        Torch device override ('cpu', 'cuda', 'mps').
+
+    Example:
+        prover = ProofSearch(
+            model_path="models/pretrained/leandojo-lean4-tacgen-byt5-small",
+            lean_project="./lean_project",
+        )
+        result = prover.prove("∀ n : ℕ, n + 0 = n", hypotheses=[])
+        print(result.proof)
+    """
+
+    def __init__(
+        self,
+        model_path: str | Path | None = None,
+        lean_project: str | Path = "./lean_project",
+        top_k: int = 32,
+        device: Optional[str] = None,
+    ):
+        self.top_k = top_k
+        self._model = TacticModel(model_path=model_path, device=device)
+        self._lean = LeanInterface(lean_project_path=lean_project)
+
+    # ── Public API ─────────────────────────────────────────────────────────────
+
+    def prove(
+        self,
+        theorem: str,
+        hypotheses: list[str] | None = None,
+        timeout: float = 60.0,
+        max_depth: int = 20,
+        retrieved_premises: list[str] | None = None,
+    ) -> ProofResult:
+        """
+        Attempt to prove `theorem` using best-first tactic search.
+
+        theorem:             Goal string in Lean 4 syntax, e.g. "∀ n : ℕ, n + 0 = n"
+        hypotheses:          List of hypothesis strings, e.g. ["n : ℕ", "h : n > 0"]
+        timeout:             Wall-clock timeout in seconds.
+        max_depth:           Maximum tactic sequence length.
+        retrieved_premises:  Optional retrieved mathlib premises (used by ReProver retriever).
+                             Leave None to skip retrieval-augmentation.
+        """
+        hypotheses = hypotheses or []
+        t_open_start = time.monotonic()
+        nodes_expanded = 0
+
+        try:
+            with self._lean.open_proof(theorem, hypotheses) as session:
+                initial_state = session.current_state_str()
+                # Reset timer AFTER Dojo opens so the timeout counts only tactic
+                # search, not the ~90s Lean REPL startup (Mathlib olean loading).
+                t_start = time.monotonic()
+
+                if session.is_complete:
+                    # Trivially true (no goals from the start — shouldn't happen)
+                    return ProofResult(
+                        proof="",
+                        verified=True,
+                        steps=[],
+                        search_nodes_expanded=0,
+                        elapsed_seconds=time.monotonic() - t_open_start,
+                    )
+
+                # Priority queue: (neg_log_prob, node)
+                heap: list[_SearchNode] = []
+                root = _SearchNode(
+                    neg_log_prob=0.0,
+                    state=initial_state,
+                    tactic_history=[],
+                    state_history=[initial_state],
+                    depth=0,
+                )
+                heapq.heappush(heap, root)
+
+                while heap:
+                    if time.monotonic() - t_start > timeout:
+                        logger.info("Proof search timed out after %.1fs", timeout)
+                        break
+
+                    node = heapq.heappop(heap)
+
+                    if node.depth >= max_depth:
+                        continue
+
+                    nodes_expanded += 1
+                    logger.debug(
+                        "Expanding node depth=%d, nodes_so_far=%d\n  state: %s",
+                        node.depth, nodes_expanded, node.state[:120],
+                    )
+
+                    # Get tactic candidates from model
+                    model_input = format_state_for_model(node.state, retrieved_premises)
+                    candidates = self._model.predict_tactics(model_input, top_k=self.top_k)
+
+                    for cand in candidates:
+                        if time.monotonic() - t_start > timeout:
+                            break
+
+                        result = session.apply_tactic(cand.tactic)
+
+                        if result.is_complete:
+                            # Found a complete proof
+                            tactic_seq = node.tactic_history + [cand.tactic]
+                            state_seq = list(zip(
+                                node.state_history,
+                                tactic_seq,
+                            ))
+                            proof_str = "\n".join(tactic_seq)
+                            return ProofResult(
+                                proof=proof_str,
+                                verified=True,
+                                steps=state_seq,
+                                search_nodes_expanded=nodes_expanded,
+                                elapsed_seconds=time.monotonic() - t_open_start,
+                            )
+
+                        if result.success:
+                            child = _SearchNode(
+                                neg_log_prob=node.neg_log_prob + (-cand.log_prob),
+                                state=result.next_state,
+                                tactic_history=node.tactic_history + [cand.tactic],
+                                state_history=node.state_history + [result.next_state],
+                                depth=node.depth + 1,
+                            )
+                            heapq.heappush(heap, child)
+
+        except Exception as e:
+            logger.exception("Unexpected error during proof search")
+            return ProofResult(
+                proof=None,
+                verified=False,
+                steps=[],
+                search_nodes_expanded=nodes_expanded,
+                elapsed_seconds=time.monotonic() - t_open_start,
+                error=str(e),
+            )
+
+        # Exhausted search space without finding a proof
+        return ProofResult(
+            proof=None,
+            verified=False,
+            steps=[],
+            search_nodes_expanded=nodes_expanded,
+            elapsed_seconds=time.monotonic() - t_open_start,
+        )
+
+    def verify_proof(
+        self,
+        theorem: str,
+        hypotheses: list[str] | None = None,
+        proof_tactics: list[str] = [],
+        verify_timeout: int = 2400,
+    ) -> bool:
+        """
+        Verify that `proof_tactics` constitutes a complete, accepted proof.
+
+        Uses `lake build TheoremProver` subprocess — no GITHUB_ACCESS_TOKEN required.
+        Each call takes ~26 min because Lean must load all ~8,500 Mathlib module
+        interfaces from disk (unavoidable with subprocess approach).
+
+        For practical proof search use prove() with GITHUB_ACCESS_TOKEN set —
+        LeanDojo's Dojo keeps Lean alive and pays this cost once per session.
+        """
+        return self._lean.verify_proof(
+            theorem=theorem,
+            hypotheses=hypotheses or [],
+            proof_tactics=proof_tactics,
+            name=None,
+        )
+
+    def verify_proofs_batch(
+        self,
+        items: list[tuple[str, list[str], list[str], str]],
+    ) -> list[bool]:
+        """
+        Verify multiple proofs in one lake build call.
+        items: [(theorem, hypotheses, proof_tactics, thm_name), ...]
+        """
+        return self._lean.verify_proofs_batch(items)
+
+    def prepare_theorem_batch(
+        self,
+        items: list[tuple[str, list[str]]],
+    ) -> str:
+        """
+        Write all theorems to ProofGoals.lean and commit once so subsequent
+        prove() calls share one cached LeanDojo trace (avoids re-trace per theorem).
+        Returns the shared commit hash.
+
+        items: [(theorem, hypotheses), ...]
+        """
+        return self._lean.prepare_theorem_batch(items)
+
+    def batch_prove(
+        self,
+        theorems: list[tuple[str, list[str]]],
+        timeout: float = 60.0,
+        max_depth: int = 20,
+    ) -> list[ProofResult]:
+        """Prove a list of (theorem, hypotheses) pairs sequentially."""
+        results = []
+        for thm, hyps in theorems:
+            logger.info("Proving: %s", thm)
+            r = self.prove(thm, hyps, timeout=timeout, max_depth=max_depth)
+            results.append(r)
+            status = "SUCCESS" if r.verified else "FAILED"
+            logger.info("  %s (%.1fs, %d nodes)", status, r.elapsed_seconds, r.search_nodes_expanded)
+        return results

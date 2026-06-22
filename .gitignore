@@ -1,0 +1,37 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.pth
+
+# Model weights (large — download via HuggingFace)
+models/pretrained/
+
+# LeanDojo trace cache (auto-rebuilt, lives in ~/.cache/lean_dojo)
+.leandojo_cache/
+*.ast.json
+*.dep_paths
+*.trace.xml
+
+# Lean build artefacts (auto-built by `lake build`)
+lean_project/.lake/
+lean_project/results/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+
+# Temp / debug
+/tmp/
+*.log
+lean4repl_debug.txt
+
+# Secrets — never commit tokens
+.env
+*.token

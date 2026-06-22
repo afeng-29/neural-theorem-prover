@@ -1,0 +1,3 @@
+[submodule "lean_project"]
+	path = lean_project
+	url = ./lean_project
