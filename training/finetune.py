@@ -148,6 +148,12 @@ def make_compute_metrics(tokenizer):
         if isinstance(predictions, tuple):
             predictions = predictions[0]
 
+        vocab_size = tokenizer.vocab_size
+        predictions = np.where(
+            (predictions >= 0) & (predictions < vocab_size),
+            predictions,
+            tokenizer.pad_token_id,
+        )
         decoded_preds = tokenizer.batch_decode(predictions, skip_special_tokens=True)
         labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
         decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
@@ -176,6 +182,7 @@ def train(
     max_input_length: int = 1024,
     max_target_length: int = 256,
     seed: int = 42,
+    resume: bool = False,
 ):
     random.seed(seed)
     output_dir = Path(output_dir)
@@ -208,6 +215,7 @@ def train(
         warmup_steps=warmup_steps,
         weight_decay=0.01,
         fp16=fp16 and torch.cuda.is_available(),
+        gradient_checkpointing=True,
         predict_with_generate=True,
         generation_max_length=256,
         generation_num_beams=4,
@@ -234,7 +242,7 @@ def train(
     )
 
     logger.info("Starting training: %d train, %d val", len(train_dataset), len(val_dataset))
-    trainer.train()
+    trainer.train(resume_from_checkpoint=resume or None)
 
     trainer.save_model(str(output_dir))
     tokenizer.save_pretrained(str(output_dir))
@@ -334,6 +342,10 @@ def main():
     parser.add_argument("--lr",         type=float, default=3e-4)
     parser.add_argument("--fp16",       action="store_true",
                         help="Use fp16 (CUDA only)")
+    parser.add_argument("--max-input-length", type=int, default=1024,
+                        help="Max encoder input length in tokens (bytes for ByT5)")
+    parser.add_argument("--resume", action="store_true",
+                        help="Resume from latest checkpoint in --output-dir")
     parser.add_argument("--top-k",      type=int,   default=10,
                         help="k for top-k accuracy evaluation")
     parser.add_argument("--n-samples",  type=int,   default=None,
@@ -357,6 +369,8 @@ def main():
             grad_accum=args.grad_accum,
             learning_rate=args.lr,
             fp16=args.fp16,
+            max_input_length=args.max_input_length,
+            resume=args.resume,
         )
         eval_model = args.output_dir
     else:
