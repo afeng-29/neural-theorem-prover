@@ -153,18 +153,30 @@ Each example is a single `(proof_state, next_tactic)` pair. Multi-step proofs co
 
 Top-10 at 21.4% means: for ~1 in 5 calculus proof states, the correct next tactic appears in the model's top-10 beam candidates.
 
-### 5.3 Baseline (Pretrained, No Fine-Tuning)
+### 5.3 Comparison vs Pretrained Baseline (same 117 test examples)
 
-The pretrained model was also evaluated end-to-end using `test_pipeline.py` on 12 hand-crafted theorems (propositional logic + natural number arithmetic):
+Evaluated on the same 117 calculus test examples using `eval_baseline.sh` (SLURM job 51029716, completed 2026-06-23 in 3m 53s).
+
+| Metric | Pretrained | Fine-tuned | Delta |
+|--------|-----------|-----------|-------|
+| **Top-1 exact match** | 5.98% | **16.24%** | **+10.26 pp** |
+| **Top-10 exact match** | 11.11% | **21.37%** | **+10.26 pp** |
+| n_samples | 117 | 117 | — |
+
+Fine-tuning on 6,734 domain-specific calculus examples yielded a **+172% relative improvement** in top-1 tactic prediction accuracy (5.98% → 16.24%). The equal gain in top-1 and top-10 (+10.26 pp both) indicates the model generates more correct tactics overall rather than merely reranking existing candidates.
+
+### 5.4 End-to-End Proof Search Baseline (pretrained model, pre-fine-tuning)
+
+Separately evaluated using `test_pipeline.py` on 12 hand-crafted theorems (propositional logic + nat arithmetic) with best-first proof search:
 
 | Metric | Value |
 |--------|-------|
 | Total theorems | 12 |
 | Proved | 11 |
-| Failed | 1 (nat_add_le_add_right) |
+| Failed | 1 (`nat_add_le_add_right`) |
 | Proof success rate | 91.7% |
 
-The fine-tuned model improves raw tactic prediction accuracy on the calculus split; end-to-end proof success on the calculus test set was not separately measured in this run.
+End-to-end proof search on the 23 new calculus theorems (ProofGoals.lean Groups A–D) with both models is pending (requires `GITHUB_ACCESS_TOKEN`; see `scripts/run_comparison.sh`).
 
 ---
 
