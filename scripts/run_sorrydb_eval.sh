@@ -17,10 +17,12 @@ source /project/dachxiu/afeng/prover/venv/bin/activate
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-if [ -z "$GITHUB_ACCESS_TOKEN" ]; then
-    echo "ERROR: GITHUB_ACCESS_TOKEN not set."
-    exit 1
-fi
+# Unset token — LeanDojo uses local repo tracing (no GitHub API needed).
+# A set token triggers an HTTPS call at import that fails on compute nodes.
+unset GITHUB_ACCESS_TOKEN
+
+export SSL_CERT_FILE=/etc/pki/tls/certs/ca-bundle.crt
+export REQUESTS_CA_BUNDLE=/etc/pki/tls/certs/ca-bundle.crt
 
 # Step 1: Download and filter SorryDB (fast, CPU-only)
 echo "=== Step 1: Fetch SorryDB calculus goals ==="

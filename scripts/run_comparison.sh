@@ -17,13 +17,15 @@ source /project/dachxiu/afeng/prover/venv/bin/activate
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-# GITHUB_ACCESS_TOKEN is required for LeanDojo to trace the local repo
-# Set it via: export GITHUB_ACCESS_TOKEN=<your token>  before sbatch
-if [ -z "$GITHUB_ACCESS_TOKEN" ]; then
-    echo "ERROR: GITHUB_ACCESS_TOKEN not set. LeanDojo needs it to trace theorems."
-    echo "Run: export GITHUB_ACCESS_TOKEN=<your token> && sbatch scripts/run_comparison.sh"
-    exit 1
-fi
+# LeanDojo traces a LOCAL repo and does not need GITHUB_ACCESS_TOKEN.
+# If the token is set it triggers a HTTPS call to api.github.com at import
+# time, which fails on cluster compute nodes (SSL cert mismatch). Unset it.
+unset GITHUB_ACCESS_TOKEN
+
+# Point Python's ssl module to the cluster CA bundle so any remaining HTTPS
+# calls (e.g. HuggingFace tokenizer downloads) succeed.
+export SSL_CERT_FILE=/etc/pki/tls/certs/ca-bundle.crt
+export REQUESTS_CA_BUNDLE=/etc/pki/tls/certs/ca-bundle.crt
 
 echo "=== Proof Search Comparison: Pretrained vs Fine-Tuned ==="
 echo "n_theorems: 23 (calculus ProofGoals.lean Group A-D)"

@@ -2,43 +2,54 @@
 Fetch the SorryDB_2601 dataset and filter for analysis/calculus goals.
 
 SorryDB tracks `sorry` placeholders from active Lean 4 math repositories.
-We filter by file path keywords (Analysis, Calculus, MeasureTheory, Topology)
-to get calculus/analysis-relevant goals for proof search evaluation.
+Data lives in the SorryDB GitHub repo (not HuggingFace):
+  https://github.com/SorryDB/SorryDB/tree/master/data/SorryDB_2601/
+
+We download the full dataset JSON, filter by file path keywords
+(Analysis, Calculus, MeasureTheory, Topology, Deriv), extract the proof
+state from debug_info.goal, and write to a flat JSONL.
 
 Output: data/sorrydb_calculus.jsonl
-Each line: {"id": ..., "repo": ..., "file_path": ..., "expected_type": ..., "state": ...}
+Each line: {"id": ..., "repo": ..., "file_path": ..., "state": ...,
+            "expected_type": ..., "hypotheses": [...]}
 
 Usage:
     python scripts/fetch_sorrydb_calculus.py [--output data/sorrydb_calculus.jsonl]
-
-Requires: pip install datasets (already in requirements.txt via huggingface-hub)
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import re
+import ssl
+import urllib.request
 from pathlib import Path
 
-# Keywords that identify analysis/calculus files in Mathlib or related repos
-CALCULUS_KEYWORDS = [
+SORRYDB_FULL_URL = (
+    "https://raw.githubusercontent.com/SorryDB/SorryDB/master/"
+    "data/SorryDB_2601/SorryDB_2601.json"
+)
+SORRYDB_EVAL_URL = (
+    "https://raw.githubusercontent.com/SorryDB/SorryDB/master/"
+    "data/SorryDB_2601/SorryDB_2601_1000_evaluation_split.json"
+)
+
+# File path substrings that identify analysis/calculus content
+CALCULUS_PATH_KEYWORDS = [
     "Calculus",
     "Analysis",
     "Deriv",
     "Differential",
     "MeasureTheory",
     "Integral",
-    "Topology/Algebra",
+    "Topology",
     "Continuity",
-    "Limit",
-    "Tendsto",
     "NormedSpace",
     "Metric",
 ]
 
-# Tactic-level keywords in the expected type that signal calculus content
-TYPE_KEYWORDS = [
+# Proof-state keywords (fallback when path doesn't match)
+CALCULUS_GOAL_KEYWORDS = [
     "HasDerivAt",
     "HasFDerivAt",
     "Differentiable",
@@ -47,154 +58,121 @@ TYPE_KEYWORDS = [
     "ContinuousAt",
     "ContinuousOn",
     "Filter.Tendsto",
-    "HasStrictDerivAt",
-    "HasStrictFDerivAt",
     "Integrable",
     "MeasureTheory",
-    "NormedSpace",
-    "IsCompact",
-    "IsClosed",
-    "IsOpen",
-    "nhds",
     "limsup",
     "liminf",
+    "nhds",
 ]
 
 
-def is_calculus_goal(record: dict) -> bool:
-    """Return True if this sorry is likely a calculus/analysis goal."""
-    file_path = record.get("file_path", "") or record.get("url", "") or ""
-    expected_type = record.get("expected_type", "") or record.get("type", "") or ""
+def _ssl_context() -> ssl.SSLContext:
+    ctx = ssl.create_default_context()
+    # Try cluster cert bundle first, fall back to system defaults
+    for bundle in [
+        "/etc/pki/tls/certs/ca-bundle.crt",
+        "/etc/ssl/certs/ca-certificates.crt",
+    ]:
+        if Path(bundle).exists():
+            ctx.load_verify_locations(bundle)
+            return ctx
+    return ctx
 
-    # Match on file path
-    for kw in CALCULUS_KEYWORDS:
-        if kw.lower() in file_path.lower():
+
+def fetch_json(url: str) -> dict:
+    print(f"Downloading {url} ...")
+    req = urllib.request.Request(url, headers={"User-Agent": "sorrydb-fetch/1.0"})
+    with urllib.request.urlopen(req, context=_ssl_context()) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def is_calculus(record: dict) -> bool:
+    path = record.get("location", {}).get("path", "")
+    for kw in CALCULUS_PATH_KEYWORDS:
+        if kw in path:
             return True
-
-    # Match on type expression
-    for kw in TYPE_KEYWORDS:
-        if kw in expected_type:
+    goal = record.get("debug_info", {}).get("goal", "")
+    for kw in CALCULUS_GOAL_KEYWORDS:
+        if kw in goal:
             return True
-
     return False
 
 
-def normalize_record(record: dict, idx: int) -> dict | None:
-    """Normalize a SorryDB record into our standard format."""
-    # SorryDB_2601 fields vary by version; try multiple key names
-    expected_type = (
-        record.get("expected_type")
-        or record.get("type")
-        or record.get("goal")
-        or ""
-    ).strip()
+def parse_goal(goal_str: str) -> tuple[str, list[str]]:
+    """
+    Split a LeanDojo-style proof state into (expected_type, hypotheses).
 
+    The goal string looks like:
+        h1 : T1\nh2 : T2\n⊢ expected_type
+    """
+    lines = goal_str.strip().split("\n")
+    goal_line_idx = next(
+        (i for i, l in enumerate(lines) if l.lstrip().startswith("⊢")), len(lines) - 1
+    )
+    hyps = [l.strip() for l in lines[:goal_line_idx] if l.strip()]
+    goal_part = lines[goal_line_idx].lstrip()
+    expected_type = goal_part[1:].strip() if goal_part.startswith("⊢") else goal_part
+    return expected_type, hyps
+
+
+def normalize(record: dict) -> dict | None:
+    goal_str = record.get("debug_info", {}).get("goal", "").strip()
+    if not goal_str:
+        return None
+    expected_type, hyps = parse_goal(goal_str)
     if not expected_type:
         return None
-
-    # Build a proof state string: hypotheses (if any) + ⊢ goal
-    hypotheses = record.get("hypotheses") or record.get("context") or []
-    if isinstance(hypotheses, str):
-        hypotheses = [h.strip() for h in hypotheses.split("\n") if h.strip()]
-
-    if hypotheses:
-        state = "\n".join(hypotheses) + "\n⊢ " + expected_type
-    else:
-        state = "⊢ " + expected_type
-
     return {
-        "id": record.get("id") or f"sorrydb_{idx:05d}",
-        "repo": record.get("repo") or record.get("repository") or "",
-        "file_path": record.get("file_path") or record.get("url") or "",
+        "id": record.get("id", ""),
+        "repo": record.get("repo", {}).get("remote", ""),
+        "file_path": record.get("location", {}).get("path", ""),
+        "url": record.get("debug_info", {}).get("url", ""),
+        "state": goal_str,
         "expected_type": expected_type,
-        "hypotheses": hypotheses,
-        "state": state,
-        "raw": record,  # keep for debugging; strip before proof search
+        "hypotheses": hyps,
     }
-
-
-def fetch_from_huggingface(output_path: Path):
-    """Download SorryDB_2601 from HuggingFace and filter."""
-    try:
-        from datasets import load_dataset
-    except ImportError:
-        print("ERROR: `datasets` not installed. Run: pip install datasets")
-        raise
-
-    print("Downloading cat-searcher/SorryDB_2601 from HuggingFace...")
-    # SorryDB is small enough to fit in memory
-    ds = load_dataset("cat-searcher/SorryDB_2601", split="train", trust_remote_code=True)
-    print(f"Total records in SorryDB_2601: {len(ds)}")
-
-    filtered = []
-    for idx, record in enumerate(ds):
-        if is_calculus_goal(record):
-            norm = normalize_record(record, idx)
-            if norm:
-                filtered.append(norm)
-
-    print(f"Calculus/analysis records: {len(filtered)} / {len(ds)}")
-    return filtered
-
-
-def fetch_from_json(json_path: str, output_path: Path):
-    """Load from a local SorryDB JSON dump."""
-    with open(json_path) as f:
-        data = json.load(f)
-
-    if isinstance(data, dict) and "sorries" in data:
-        records = data["sorries"]
-    elif isinstance(data, list):
-        records = data
-    else:
-        raise ValueError(f"Unexpected JSON structure in {json_path}")
-
-    filtered = [
-        norm for idx, r in enumerate(records)
-        if is_calculus_goal(r)
-        for norm in [normalize_record(r, idx)]
-        if norm
-    ]
-    print(f"Calculus/analysis records: {len(filtered)} / {len(records)}")
-    return filtered
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="data/sorrydb_calculus.jsonl")
-    parser.add_argument("--local-json", default=None,
-                        help="Path to a local SorryDB JSON dump (skip HuggingFace download)")
-    parser.add_argument("--max-goals", type=int, default=None,
-                        help="Limit to this many goals (for quick testing)")
+    parser.add_argument("--eval-split", action="store_true",
+                        help="Use the 1000-sorry evaluation split instead of full 2601")
+    parser.add_argument("--max-goals", type=int, default=None)
     parser.add_argument("--show-types", action="store_true",
-                        help="Print all unique expected_type prefixes for inspection")
+                        help="Print first 30 expected_type values for inspection")
     args = parser.parse_args()
 
-    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+    url = SORRYDB_EVAL_URL if args.eval_split else SORRYDB_FULL_URL
+    data = fetch_json(url)
 
-    if args.local_json:
-        records = fetch_from_json(args.local_json, Path(args.output))
-    else:
-        records = fetch_from_huggingface(Path(args.output))
+    # Schema: {"documentation": "...", "sorries": [...]}
+    sorries = data.get("sorries", data) if isinstance(data, dict) else data
+    print(f"Total sorries in dataset: {len(sorries)}")
+
+    filtered = []
+    for rec in sorries:
+        if is_calculus(rec):
+            norm = normalize(rec)
+            if norm:
+                filtered.append(norm)
+
+    print(f"Calculus/analysis sorries: {len(filtered)} / {len(sorries)}")
 
     if args.max_goals:
-        records = records[: args.max_goals]
+        filtered = filtered[: args.max_goals]
 
     if args.show_types:
-        print("\n--- Expected type prefixes (first 60 chars) ---")
-        for r in records[:30]:
-            print(" ", r["expected_type"][:60])
+        print("\n--- Sample expected_types ---")
+        for r in filtered[:20]:
+            print(f"  [{r['file_path'].split('/')[-1]}] {r['expected_type'][:80]}")
 
-    # Write to JSONL (strip 'raw' field to keep output clean)
-    out_path = Path(args.output)
-    with open(out_path, "w", encoding="utf-8") as f:
-        for r in records:
-            r_out = {k: v for k, v in r.items() if k != "raw"}
-            f.write(json.dumps(r_out, ensure_ascii=False) + "\n")
+    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+    with open(args.output, "w", encoding="utf-8") as f:
+        for r in filtered:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
-    print(f"\nWrote {len(records)} calculus/analysis goals to {out_path}")
-    print(f"\nNext step: run proof search comparison on these goals:")
-    print(f"  sbatch scripts/run_sorrydb_eval.sh")
+    print(f"\nWrote {len(filtered)} goals to {args.output}")
 
 
 if __name__ == "__main__":
