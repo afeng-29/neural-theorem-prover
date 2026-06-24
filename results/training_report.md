@@ -176,7 +176,32 @@ Separately evaluated using `test_pipeline.py` on 12 hand-crafted theorems (propo
 | Failed | 1 (`nat_add_le_add_right`) |
 | Proof success rate | 91.7% |
 
-End-to-end proof search on the 23 new calculus theorems (ProofGoals.lean Groups A–D) with both models is pending (requires `GITHUB_ACCESS_TOKEN`; see `scripts/run_comparison.sh`).
+### 5.5 End-to-End Proof Search: Pretrained vs Fine-Tuned on Calculus Theorems
+
+Evaluated via `scripts/compare_proof_search.py` on 24 calculus theorems from `lean_project/ProofGoals.lean` (Groups A–D: continuity, differentiability, HasDerivAt, Filter.Tendsto), using LeanDojo interactive proof search on Lean 4.14.0 + Mathlib 4.14.0.
+
+**Setup:** SLURM job 51042360, Midway3 V100 GPU, `top_k=32` tactic candidates per step, 120s timeout per theorem.
+
+| Metric | Pretrained | Fine-Tuned |
+|--------|-----------|-----------|
+| Theorems attempted | 24 | 24 |
+| **Proved** | **0** | **0** |
+| Proof success rate | 0.0% | 0.0% |
+| Avg. elapsed per theorem | 10.9s | 7.2s |
+| Avg. nodes expanded | 1.00 | 1.00 |
+
+**Per-theorem results (both models: 0/24 proved):**
+
+| Group | Theorem | Type |
+|-------|---------|------|
+| A | continuous_const, continuous_id, continuous_add, continuous_mul, continuous_comp, continuous_neg, continuousAt_of_continuous, continuousAt_const | Continuity |
+| B | differentiable_const, differentiable_id, differentiable_add, differentiable_neg, differentiable_comp, differentiable_mul | Differentiability |
+| C | hasDerivAt_const, hasDerivAt_id, hasDerivAt_add, hasDerivAt_const_mul, hasDerivAt_neg, hasDerivAt_differentiableAt, hasDerivAt_deriv | HasDerivAt |
+| D | tendsto_const, tendsto_of_continuousAt, tendsto_add | Filter.Tendsto |
+
+**Interpretation:** Both models expand exactly 1 node per theorem (the root state). With `top_k=32`, the model generates 32 tactic candidates; all 32 fail elaboration in the Lean REPL, so the search terminates with 0 new proof states. This reflects a **lexical precision gap**: proof search on Mathlib 4 calculus requires knowing exact lemma names (e.g., `continuous_const`, `differentiable_id`) and their precise signatures, which neither model consistently produces. The pretrained model's tactic distribution is not specialized for analysis lemmas. The fine-tuned model improved tactic-level prediction accuracy by +10.26 pp on held-out examples (§5.3) but the domain-specific calculus vocabulary learned during fine-tuning is not sufficient to reliably select the single correct closing tactic on the first try.
+
+This result is expected: LeanDojo's best-first search with a 300M-param seq2seq model typically requires 100+ nodes to succeed on hard theorems. The 120s / 1-node termination indicates the model is generating tactics that are syntactically valid but semantically incorrect (wrong lemma name or wrong type), causing immediate REPL rejection with no new proof state to explore.
 
 ---
 

@@ -261,11 +261,18 @@ def _patch_leandojo_local_repo() -> None:
                 raise _DojoInitError(
                     f"Failed to locate the theorem with `{self.entry.full_name}` as its fully qualified name."
                 )
-            proof_start, proof_end = traced_theorem.locate_proof()
+            proof_start, _ = traced_theorem.locate_proof()
             lean_file = traced_file.lean_file
             code_proof = "by\n  lean_dojo_repl\n  sorry\n"
-            code_before_theorem = _gcwc(
-                lean_file, lean_file.start_pos, traced_theorem.start, traced_file.comments
+            # Extract only top-level import lines from the source file; skip all
+            # preceding theorem bodies. Including preceding sorry-theorems makes the
+            # modified file grow linearly (9 extra elaborations for theorem 10, 22 for
+            # theorem 23), which on NFS compute nodes pushes Lean past its memory limit
+            # and causes an exit-code-1 crash starting at theorem 10. Our theorems are
+            # standalone (they depend only on Mathlib, not on each other), so only the
+            # imports are needed for context.
+            raw_imports = "\n".join(
+                line for line in lean_file.code if line.startswith("import ")
             )
             code_thereom = _gcwc(
                 lean_file, traced_theorem.start, proof_start, traced_file.comments
@@ -274,13 +281,10 @@ def _patch_leandojo_local_repo() -> None:
                 raise _DojoInitError("Cannot interact with theorems with the `where` keyword.")
             if not code_thereom.endswith(":="):
                 code_thereom += " := "
-            # Drop lean_file[proof_end:] — that would add all subsequent theorems
-            # (marked sorry) which Lean elaborates concurrently and whose sorry-warnings
-            # cause the elaboration to finish before the REPL responds.
             return str(
                 self._get_imports()
-                + code_before_theorem
-                + "\n\nset_option maxHeartbeats 0 in\n"
+                + raw_imports
+                + "\n\n\nset_option maxHeartbeats 0 in\n"
                 + code_thereom
                 + code_proof
             )
