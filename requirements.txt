@@ -1,5 +1,5 @@
 # Core theorem proving
-lean-dojo>=1.7.0
+lean-dojo==2.2.0
 
 # Model inference
 torch>=2.1.0
