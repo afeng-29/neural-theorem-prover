@@ -17,6 +17,9 @@ source /project/dachxiu/afeng/prover/venv/bin/activate
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
+# elan/lean/lake are installed in ~/.elan/bin (shared NFS home dir)
+export PATH="$HOME/.elan/bin:$PATH"
+
 # LeanDojo traces a LOCAL repo and does not need GITHUB_ACCESS_TOKEN.
 # If the token is set it triggers a HTTPS call to api.github.com at import
 # time, which fails on cluster compute nodes (SSL cert mismatch). Unset it.
