@@ -315,7 +315,7 @@ def _patch_leandojo_local_repo() -> None:
             from loguru import logger as _log2
             _log2.debug(f"Initializing Dojo (PopenSpawn/pipe-stdin) for {self_dojo.entry}")
 
-            traced_repo_path = _gtrp2(self_dojo.repo, self_dojo.build_deps)
+            traced_repo_path = _gtrp2(self_dojo.repo, getattr(self_dojo, "build_deps", False))
             repl_path = traced_repo_path / "Lean4Repl.lean"
             assert repl_path.exists(), (
                 "Unable to find Lean4Repl.lean in the traced repo. "
