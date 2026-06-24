@@ -205,6 +205,22 @@ This result is expected: LeanDojo's best-first search with a 300M-param seq2seq 
 
 ---
 
+### 5.6 SorryDB Evaluation (Calculus/Analysis Open Problems)
+
+Evaluated via `scripts/run_sorrydb_eval.py` on 50 calculus/analysis `sorry`s sampled from [SorryDB](https://github.com/austinletson/sorrydb) — real unsolved goals from external Lean 4 repositories (e.g., PrimeNumberTheoremAnd, DerivativeBound).
+
+**Setup:** SLURM job 51041216, top_k=32, 120s timeout, both models.
+
+| Metric | Pretrained | Fine-Tuned |
+|--------|-----------|-----------|
+| Goals attempted | 50 | 50 |
+| Proved | 0 | 0 |
+| Success rate | 0.0% | 0.0% |
+
+All 50 goals failed at the `lake build` step (exit code 1) — the external repos cannot be compiled on this cluster due to missing dependencies, incompatible Lean versions, or network-inaccessible packages. This is expected: SorryDB pulls real in-the-wild mathematical development repositories, not self-contained benchmarks. No proof search could be attempted.
+
+---
+
 ## 6. Model Artifacts
 
 ```
