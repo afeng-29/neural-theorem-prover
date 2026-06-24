@@ -183,10 +183,12 @@ def _patch_leandojo_local_repo() -> None:
             # 2. get_traced_repo_path (no "repos/" prefix):
             #    caches the traced repo (AST files, symlinks).
             if str(rel_cache_dir).startswith("repos/"):
-                if not cache_path.exists():
-                    cache_path.parent.mkdir(parents=True, exist_ok=True)
-                    os.symlink(src, cache_path)
-                return cache_path
+                # Return src directly so gitpython opens the repo from its real
+                # path. A symlink would break relative gitdir resolution: the
+                # lean_project .git file says "gitdir: ../.git/modules/lean_project"
+                # which only resolves correctly when opened from lean_project itself,
+                # not from a symlink at an arbitrary cache location.
+                return src
 
             if not cache_path.parent.exists():
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
