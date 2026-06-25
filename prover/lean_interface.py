@@ -363,9 +363,17 @@ def _patch_leandojo_local_repo() -> None:
                     return  # process still running — ok
                 if rc in (-9, 137):
                     raise _DCE2("OOM")
-                elif rc != 0:
-                    raise _DCE2(f"Unexpected exit code: {rc}")
-                # rc == 0: lean exited cleanly; let caller handle pipe EOF naturally
+                # rc=0: clean exit.
+                # rc=1: Lean exits with code 1 when the proof template's trailing `sorry`
+                #   hits "no goals" after the REPL tactic closes the proof. This is
+                #   expected behaviour — we've already read the valid REPL> response.
+                #   With PTY-based pexpect.spawn, isalive() would still return True here
+                #   (PTY master stays open), so this check was harmless. With PopenSpawn,
+                #   poll() immediately reflects the true exit, so we must NOT raise.
+                # Any other exit code: treat the same way — let the next pipe read
+                #   raise EOFError which becomes DojoCrashError("Unexpected EOF").
+                #   BrokenPipeError from sendline() propagates as a plain exception and
+                #   is caught by apply_tactic's except-all handler.
 
             self_dojo._check_alive = _types.MethodType(_check_alive_popen, self_dojo)
 

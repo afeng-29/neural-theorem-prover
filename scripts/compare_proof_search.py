@@ -112,11 +112,13 @@ CALCULUS_THEOREMS: list[tuple[str, str, list[str], str]] = [
 
 
 def run_search(model_path: str, lean_project: str, timeout: float,
-               top_k: int, log_tactics: bool = False) -> list[dict]:
+               top_k: int, log_tactics: bool = False,
+               model_type: str = "byt5") -> list[dict]:
     prover = ProofSearch(
         model_path=model_path,
         lean_project=lean_project,
         top_k=top_k,
+        model_type=model_type,
     )
 
     # Batch-prepare theorems so LeanDojo traces them in one lake build
@@ -204,6 +206,9 @@ def main():
                         help="Path to write JSON results (default: results/proof_search_comparison.json)")
     parser.add_argument("--log-tactics", action="store_true",
                         help="Include tactics_tried and elaboration_results for the root node in output JSON")
+    parser.add_argument("--model-type", default="byt5",
+                        choices=["byt5", "deepseek", "causal"],
+                        help="Model backend: byt5 (default), deepseek (7B), or causal")
     args = parser.parse_args()
 
     Path("results").mkdir(exist_ok=True)
@@ -212,17 +217,19 @@ def main():
 
     if args.model in ("both", "pretrained"):
         print("\n" + "=" * 70)
-        print(f"Running PRETRAINED model  ({args.pretrained})")
+        print(f"Running PRETRAINED model  ({args.pretrained})  [{args.model_type}]")
         print("=" * 70)
         pre_results = run_search(args.pretrained, args.lean_project,
-                                 args.timeout, args.top_k, args.log_tactics)
+                                 args.timeout, args.top_k, args.log_tactics,
+                                 args.model_type)
 
     if args.model in ("both", "finetuned"):
         print("\n" + "=" * 70)
-        print(f"Running FINE-TUNED model  ({args.finetuned})")
+        print(f"Running FINE-TUNED model  ({args.finetuned})  [{args.model_type}]")
         print("=" * 70)
         ft_results = run_search(args.finetuned, args.lean_project,
-                                args.timeout, args.top_k, args.log_tactics)
+                                args.timeout, args.top_k, args.log_tactics,
+                                args.model_type)
 
     if pre_results and ft_results:
         print_comparison(pre_results, ft_results)
@@ -231,6 +238,7 @@ def main():
         "n_theorems": len(CALCULUS_THEOREMS),
         "timeout": args.timeout,
         "top_k": args.top_k,
+        "model_type": args.model_type,
     }
     if pre_results:
         n = len(pre_results)

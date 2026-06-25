@@ -179,12 +179,14 @@ Proof state:
 
 Next tactic:"""
 
-# DeepSeek-Prover-V1.5 was trained with this exact prompt format for step-by-step proving.
-_DEEPSEEK_PROVER_PROMPT = """\
-Complete the next step of this Lean 4 proof.
-Output ONLY the next tactic, nothing else.
+# DeepSeek-Prover-V1.5 uses a Deepseek-Coder-style chat template:
+# ### Instruction:\n{msg}\n### Response:\n
+# We use apply_chat_template() so BOS/system tokens are inserted correctly.
+_DEEPSEEK_PROVER_INSTRUCTION = """\
+You are an expert Lean 4 theorem prover. Given the current proof state, produce \
+ONLY the single next tactic. Do not include explanations, comments, or multiple tactics.
 
-Current proof state:
+Proof state:
 {state}
 
 Next tactic:"""
@@ -299,7 +301,7 @@ class DeepSeekProverModel:
         if self.load_in_4bit:
             kwargs["quantization_config"] = BitsAndBytesConfig(load_in_4bit=True)
         else:
-            kwargs["torch_dtype"] = torch.float16
+            kwargs["dtype"] = torch.float16  # V100 supports fp16; bfloat16 needs Ampere+
 
         self._model = AutoModelForCausalLM.from_pretrained(self.model_id, **kwargs)
         self._model.eval()
@@ -317,10 +319,16 @@ class DeepSeekProverModel:
     ) -> list[TacticCandidate]:
         self._ensure_loaded()
 
-        prompt = _DEEPSEEK_PROVER_PROMPT.format(state=state.strip())
-        inputs = self._tokenizer(prompt, return_tensors="pt").to(
-            next(self._model.parameters()).device
+        device = next(self._model.parameters()).device
+        instruction = _DEEPSEEK_PROVER_INSTRUCTION.format(state=state.strip())
+
+        # Use the model's chat template so BOS/system tokens are correct.
+        prompt = self._tokenizer.apply_chat_template(
+            [{"role": "user", "content": instruction}],
+            tokenize=False,
+            add_generation_prompt=True,
         )
+        inputs = self._tokenizer(prompt, return_tensors="pt").to(device)
         prompt_len = inputs["input_ids"].shape[1]
 
         outputs = self._model.generate(
@@ -336,11 +344,17 @@ class DeepSeekProverModel:
         candidates = []
         seen: set[str] = set()
         for i, seq in enumerate(outputs):
-            # Decode only newly generated tokens
             new_tokens = seq[prompt_len:]
             text = self._tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
-            tactic = text.split("\n")[0].strip()
-            if tactic and tactic not in seen:
+            # Take first non-empty line as the tactic; strip markdown fences
+            for line in text.split("\n"):
+                line = line.strip().lstrip("`").rstrip("`").strip()
+                if line and not line.startswith("```"):
+                    tactic = line
+                    break
+            else:
+                continue
+            if tactic not in seen:
                 seen.add(tactic)
                 candidates.append(TacticCandidate(tactic=tactic, log_prob=-float(i)))
 
