@@ -23,28 +23,34 @@ export REQUESTS_CA_BUNDLE=/etc/pki/tls/certs/ca-bundle.crt
 
 MODEL=models/pretrained/deepseek-prover-v1.5-rl
 
-echo "=== Step 0: Sanity check — DeepSeek-Prover tactic generation ==="
+echo "=== Step 0: Sanity check — DeepSeek-Prover whole-proof generation ==="
 python3 -c "
 import logging
 logging.basicConfig(level=logging.INFO)
 from prover.tactic_model import DeepSeekProverModel
 
 m = DeepSeekProverModel('$MODEL')
-state = 'c : ℝ\n⊢ Continuous (fun _ : ℝ => c)'
-print('Goal:', repr(state))
-candidates = m.predict_tactics(state, top_k=20, max_new_tokens=64)
+theorem = 'Continuous (fun _ : ℝ => c)'
+hyps = ['c : ℝ']
+print('Theorem:', theorem)
+print('Hypotheses:', hyps)
+scripts = m.generate_proofs(theorem, hyps, n=16, max_new_tokens=128)
 print()
-print('Top-20 generated tactics:')
-for i, c in enumerate(candidates, 1):
-    print(f'  {i:2d}  {c.log_prob:.2f}  {c.tactic!r}')
+print(f'Generated {len(scripts)} proof scripts:')
+for i, script in enumerate(scripts, 1):
+    print(f'  script {i:2d}: {script}')
 
-known_correct = ['exact continuous_const', 'fun_prop', 'continuity', 'simp']
-found = [c.tactic for c in candidates if c.tactic in known_correct]
+known_correct = ['exact continuous_const', 'fun_prop', 'continuity', 'simp', 'exact?']
+found_in_scripts = []
+for script in scripts:
+    for tactic in script:
+        if tactic in known_correct and tactic not in found_in_scripts:
+            found_in_scripts.append(tactic)
 print()
-if found:
-    print('FOUND known-correct tactics:', found)
+if found_in_scripts:
+    print('FOUND known-correct tactics in scripts:', found_in_scripts)
 else:
-    print('NONE of', known_correct, 'found in top-20')
+    print('NONE of', known_correct, 'found in any generated script')
 "
 
 echo ""

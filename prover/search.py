@@ -127,6 +127,144 @@ class ProofSearch:
                              Leave None to skip retrieval-augmentation.
         """
         hypotheses = hypotheses or []
+        if isinstance(self._model, DeepSeekProverModel):
+            return self._prove_deepseek_whole_proof(theorem, hypotheses, timeout, max_depth)
+        return self._prove_best_first(theorem, hypotheses, timeout, max_depth, retrieved_premises)
+
+    def _prove_deepseek_whole_proof(
+        self,
+        theorem: str,
+        hypotheses: list[str],
+        timeout: float,
+        max_depth: int,
+    ) -> ProofResult:
+        """
+        Whole-proof generation mode for DeepSeek-Prover-V1.5-RL.
+
+        DeepSeek was trained on Lean 4 file completion, not step-by-step chat.
+        Strategy: generate top_k complete proof scripts BEFORE opening the REPL,
+        then try each script sequentially inside one Dojo session (each rejected
+        tactic leaves the REPL state unchanged).
+
+        For each depth level, we only try tactics from scripts whose prefix
+        matches what has been applied so far — this keeps the search coherent
+        across multi-tactic proofs without requiring multiple REPL sessions.
+        """
+        t_start = time.monotonic()
+        _root_tactics: list[dict] = []
+        nodes_expanded = 0
+
+        # Generate complete proof scripts (GPU inference, before REPL starts)
+        proof_scripts = self._model.generate_proofs(
+            theorem=theorem,
+            hypotheses=hypotheses,
+            n=self.top_k,
+            max_new_tokens=256,
+        )
+        logger.info("DeepSeek generated %d scripts for '%s...'",
+                    len(proof_scripts), theorem[:50])
+        for i, s in enumerate(proof_scripts[:5]):
+            logger.debug("  script %d: %s", i, s)
+
+        if not proof_scripts:
+            return ProofResult(proof=None, verified=False, steps=[],
+                               search_nodes_expanded=0,
+                               elapsed_seconds=time.monotonic() - t_start,
+                               error="DeepSeek generated no proof scripts")
+
+        try:
+            with self._lean.open_proof(theorem, hypotheses) as session:
+                # Scripts that are still "alive" (prefix so far has been valid)
+                # Each entry: (script_tactics, applied_depth)
+                active_scripts: list[list[str]] = list(proof_scripts)
+                applied: list[str] = []
+                state_history: list[str] = [session.current_state_str()]
+
+                for depth in range(max_depth):
+                    if time.monotonic() - t_start > timeout:
+                        break
+
+                    # Collect the next tactic from each active script at this depth
+                    candidates_at_depth: list[str] = []
+                    seen_at_depth: set[str] = set()
+                    for script in active_scripts:
+                        if depth < len(script):
+                            t = script[depth]
+                            if t not in seen_at_depth:
+                                seen_at_depth.add(t)
+                                candidates_at_depth.append(t)
+
+                    if not candidates_at_depth:
+                        break
+
+                    nodes_expanded += 1
+                    is_root_node = depth == 0
+                    succeeded_tactic: str | None = None
+
+                    for tactic in candidates_at_depth:
+                        if time.monotonic() - t_start > timeout:
+                            break
+
+                        result = session.apply_tactic(tactic)
+
+                        if is_root_node:
+                            entry: dict = {"tactic": tactic, "log_prob": -float(candidates_at_depth.index(tactic))}
+                            if result.is_complete:
+                                entry["elaboration"] = "complete"
+                            elif result.success:
+                                entry["elaboration"] = "success"
+                                entry["next_state"] = result.next_state
+                            else:
+                                entry["elaboration"] = "error"
+                                entry["error_message"] = result.error_message
+                            _root_tactics.append(entry)
+
+                        if result.is_complete:
+                            tactic_seq = applied + [tactic]
+                            return ProofResult(
+                                proof="\n".join(tactic_seq),
+                                verified=True,
+                                steps=list(zip(state_history, tactic_seq)),
+                                search_nodes_expanded=nodes_expanded,
+                                elapsed_seconds=time.monotonic() - t_start,
+                                root_tactics=_root_tactics,
+                            )
+
+                        if result.success:
+                            # First successful tactic at this depth wins;
+                            # filter active scripts to those using this tactic.
+                            succeeded_tactic = tactic
+                            applied.append(tactic)
+                            state_history.append(result.next_state)
+                            active_scripts = [s for s in active_scripts
+                                              if depth < len(s) and s[depth] == tactic]
+                            break  # move to next depth
+
+                    if succeeded_tactic is None:
+                        # No tactic at this depth advanced the proof
+                        break
+
+        except Exception as e:
+            logger.exception("Unexpected error during DeepSeek proof search")
+            return ProofResult(proof=None, verified=False, steps=[],
+                               search_nodes_expanded=nodes_expanded,
+                               elapsed_seconds=time.monotonic() - t_start,
+                               error=str(e), root_tactics=_root_tactics)
+
+        return ProofResult(proof=None, verified=False, steps=[],
+                           search_nodes_expanded=nodes_expanded,
+                           elapsed_seconds=time.monotonic() - t_start,
+                           root_tactics=_root_tactics)
+
+    def _prove_best_first(
+        self,
+        theorem: str,
+        hypotheses: list[str],
+        timeout: float,
+        max_depth: int,
+        retrieved_premises: list[str] | None,
+    ) -> ProofResult:
+        """Best-first proof search for ByT5-small and other step-by-step models."""
         t_open_start = time.monotonic()
         nodes_expanded = 0
         _root_tactics: list[dict] = []
@@ -139,7 +277,6 @@ class ProofSearch:
                 t_start = time.monotonic()
 
                 if session.is_complete:
-                    # Trivially true (no goals from the start — shouldn't happen)
                     return ProofResult(
                         proof="",
                         verified=True,
@@ -148,7 +285,6 @@ class ProofSearch:
                         elapsed_seconds=time.monotonic() - t_open_start,
                     )
 
-                # Priority queue: (neg_log_prob, node)
                 heap: list[_SearchNode] = []
                 root = _SearchNode(
                     neg_log_prob=0.0,
@@ -175,7 +311,6 @@ class ProofSearch:
                         node.depth, nodes_expanded, node.state[:120],
                     )
 
-                    # Get tactic candidates from model
                     model_input = format_state_for_model(node.state, retrieved_premises)
                     candidates = self._model.predict_tactics(model_input, top_k=self.top_k)
 
@@ -198,12 +333,8 @@ class ProofSearch:
                             _root_tactics.append(entry)
 
                         if result.is_complete:
-                            # Found a complete proof
                             tactic_seq = node.tactic_history + [cand.tactic]
-                            state_seq = list(zip(
-                                node.state_history,
-                                tactic_seq,
-                            ))
+                            state_seq = list(zip(node.state_history, tactic_seq))
                             proof_str = "\n".join(tactic_seq)
                             return ProofResult(
                                 proof=proof_str,
@@ -236,7 +367,6 @@ class ProofSearch:
                 root_tactics=_root_tactics,
             )
 
-        # Exhausted search space without finding a proof
         return ProofResult(
             proof=None,
             verified=False,

@@ -179,17 +179,20 @@ Proof state:
 
 Next tactic:"""
 
-# DeepSeek-Prover-V1.5 uses a Deepseek-Coder-style chat template:
-# ### Instruction:\n{msg}\n### Response:\n
-# We use apply_chat_template() so BOS/system tokens are inserted correctly.
-_DEEPSEEK_PROVER_INSTRUCTION = """\
-You are an expert Lean 4 theorem prover. Given the current proof state, produce \
-ONLY the single next tactic. Do not include explanations, comments, or multiple tactics.
+# DeepSeek-Prover-V1.5-RL was trained for WHOLE-PROOF completion, not next-tactic
+# prediction from a bare proof state.  The correct prompt is a Lean 4 file with
+# imports + theorem declaration ending at `:= by\n`, and the model generates the
+# tactic body.  We extract each line of each generated proof as a TacticCandidate
+# so the existing step-by-step REPL loop can try them sequentially.
+_DEEPSEEK_PROVER_HEADER = """\
+import Mathlib
+import Aesop
 
-Proof state:
-{state}
+set_option maxHeartbeats 400000
 
-Next tactic:"""
+open BigOperators Real Nat Topology Finset
+
+"""
 
 
 class CausalLMTacticModel:
@@ -258,19 +261,40 @@ class CausalLMTacticModel:
 
 # ── DeepSeek-Prover-V1.5 ──────────────────────────────────────────────────────
 
+def _extract_deepseek_tactics(text: str) -> list[str]:
+    """
+    Extract tactic lines from a DeepSeek-Prover whole-proof completion.
+
+    DeepSeek generates proof body lines after `example ... := by\n`.
+    We keep non-empty stripped lines until we hit a stop marker (new
+    theorem/import declaration, markdown fence, or a blank-line + keyword
+    that signals the proof ended).
+    """
+    _STOP_PREFIXES = ("import ", "theorem ", "lemma ", "def ", "open ",
+                      "#check", "#eval", "```", "--", "/-")
+    tactics = []
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            # One blank line is fine (proof continuation); stop after second
+            continue
+        if any(stripped.startswith(p) for p in _STOP_PREFIXES):
+            break
+        tactics.append(stripped)
+    return tactics
+
+
 class DeepSeekProverModel:
     """
     Tactic model backed by deepseek-ai/DeepSeek-Prover-V1.5-RL (7B params).
 
-    This model was specifically trained for Lean 4 step-by-step theorem proving
-    and achieves substantially higher proof rates than ByT5-small on Mathlib
-    theorems.  It requires ~14 GB VRAM in fp16 (fits a V100-32GB).
+    The model was trained for WHOLE-PROOF completion from a Lean 4 theorem
+    declaration (`:= by` prefix), not step-by-step tactic chat.  Use
+    generate_proofs() to get full proof candidates; ProofSearch routes
+    DeepSeek through _prove_deepseek_whole_proof() which tries each
+    generated script via the REPL.
 
-    Usage:
-        model = DeepSeekProverModel()
-        candidates = model.predict_tactics(state, top_k=32)
-
-    model_id can also point to a local path if already downloaded.
+    Requires ~14 GB VRAM in fp16 (fits a V100-32GB).
     """
 
     DEFAULT_MODEL_ID = "deepseek-ai/DeepSeek-Prover-V1.5-RL"
@@ -308,6 +332,66 @@ class DeepSeekProverModel:
         n = sum(p.numel() for p in self._model.parameters())
         logger.info("DeepSeek-Prover loaded (%.1fB parameters)", n / 1e9)
 
+    def _build_prompt(self, theorem: str, hypotheses: list[str],
+                      prior_tactics: list[str] | None = None) -> str:
+        """Format a Lean 4 file header + theorem stub for whole-proof completion."""
+        hyp_str = " ".join(f"({h})" for h in hypotheses) if hypotheses else ""
+        indent = "  "
+        tactic_lines = ""
+        if prior_tactics:
+            tactic_lines = "\n".join(f"{indent}{t}" for t in prior_tactics) + "\n"
+        return (
+            f"{_DEEPSEEK_PROVER_HEADER}"
+            f"example {hyp_str} : {theorem} := by\n"
+            f"{tactic_lines}"
+            f"{indent}"
+        )
+
+    @torch.no_grad()
+    def generate_proofs(
+        self,
+        theorem: str,
+        hypotheses: list[str],
+        n: int = 32,
+        max_new_tokens: int = 256,
+        temperature: float = 1.0,
+        top_p: float = 0.95,
+        prior_tactics: list[str] | None = None,
+    ) -> list[list[str]]:
+        """
+        Generate n complete proof attempts.
+
+        Returns a list of tactic-line sequences (one sequence per attempt).
+        The prompt ends with `  ` (two-space indent after `by\n`) so the
+        model generates the indented proof body directly.
+
+        prior_tactics: tactics already applied (for mid-proof continuation).
+        """
+        self._ensure_loaded()
+        prompt_text = self._build_prompt(theorem, hypotheses, prior_tactics)
+        device = next(self._model.parameters()).device
+        inputs = self._tokenizer(prompt_text, return_tensors="pt").to(device)
+        prompt_len = inputs["input_ids"].shape[1]
+
+        outputs = self._model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=True,
+            temperature=temperature,
+            top_p=top_p,
+            num_return_sequences=n,
+            pad_token_id=self._tokenizer.eos_token_id,
+        )
+
+        proofs = []
+        for seq in outputs:
+            text = self._tokenizer.decode(seq[prompt_len:], skip_special_tokens=True)
+            tactics = _extract_deepseek_tactics(text)
+            if tactics:
+                proofs.append(tactics)
+        logger.info("DeepSeek generated %d non-empty proof scripts", len(proofs))
+        return proofs
+
     @torch.no_grad()
     def predict_tactics(
         self,
@@ -317,17 +401,15 @@ class DeepSeekProverModel:
         temperature: float = 1.0,
         top_p: float = 0.95,
     ) -> list[TacticCandidate]:
+        """
+        Fallback: step-by-step tactic prediction from bare proof state.
+        Used only when theorem context is unavailable; ProofSearch calls
+        generate_proofs() instead via _prove_deepseek_whole_proof().
+        """
         self._ensure_loaded()
-
         device = next(self._model.parameters()).device
-        instruction = _DEEPSEEK_PROVER_INSTRUCTION.format(state=state.strip())
-
-        # Use the model's chat template so BOS/system tokens are correct.
-        prompt = self._tokenizer.apply_chat_template(
-            [{"role": "user", "content": instruction}],
-            tokenize=False,
-            add_generation_prompt=True,
-        )
+        # Minimal Lean-style prompt without full file header
+        prompt = f"-- proof state:\n{state.strip()}\n-- next tactic:\n  "
         inputs = self._tokenizer(prompt, return_tensors="pt").to(device)
         prompt_len = inputs["input_ids"].shape[1]
 
@@ -344,19 +426,14 @@ class DeepSeekProverModel:
         candidates = []
         seen: set[str] = set()
         for i, seq in enumerate(outputs):
-            new_tokens = seq[prompt_len:]
-            text = self._tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
-            # Take first non-empty line as the tactic; strip markdown fences
+            text = self._tokenizer.decode(seq[prompt_len:], skip_special_tokens=True).strip()
             for line in text.split("\n"):
-                line = line.strip().lstrip("`").rstrip("`").strip()
-                if line and not line.startswith("```"):
-                    tactic = line
+                line = line.strip()
+                if line and not line.startswith(("#", "-", "`")):
+                    if line not in seen:
+                        seen.add(line)
+                        candidates.append(TacticCandidate(tactic=line, log_prob=-float(i)))
                     break
-            else:
-                continue
-            if tactic not in seen:
-                seen.add(tactic)
-                candidates.append(TacticCandidate(tactic=tactic, log_prob=-float(i)))
 
         return candidates
 

@@ -341,14 +341,59 @@ The model generates correct tactics at rank 1 and 3. Prior to the `<a>` tag fix,
 | MiniF2F-test | ~30% (ReProver) | **60.2%** (DeepSeek-RL) |
 | Inference | Beam search (32 beams) | Sampling (do_sample=True, top_p=0.95) |
 | VRAM (fp16) | ~1.2 GB | ~14 GB |
-| Prompt format | Bare proof state string | Deepseek-Coder chat template (`### Instruction / ### Response`) |
+| Prompt format | Bare proof state string | Lean 4 file completion (`import Mathlib ... example := by`) |
 
-**Setup:** Model downloaded to `models/pretrained/deepseek-prover-v1.5-rl` (13 GB, 2 safetensor shards). SLURM job **51073663** (gpu partition, 1× V100-32GB, 8h walltime). Runs:
-1. Sanity check: top-20 tactics for `continuous_const` goal
-2. `compare_proof_search.py --model-type deepseek` on 24 calculus theorems → `results/proof_search_deepseek.json`
-3. `test_pipeline.py --model-type deepseek` on 12 hand-crafted theorems
+**Setup:** Model downloaded to `models/pretrained/deepseek-prover-v1.5-rl` (13 GB, 2 safetensor shards). SLURM job **51073663** (gpu partition, 1× V100-32GB, 8h walltime, completed in 20m 12s).
 
-**Status:** Job running as of 2026-06-25 with the PopenSpawn REPL crash fix active. Results pending.
+**Actual results (job 51073663) — FAILED:**
+- **Sanity check:** NONE of `['exact continuous_const', 'fun_prop', 'continuity', 'simp']` found in top-20 outputs.
+- **24 calculus theorems (compare_proof_search.py):** 0/24 proved. First theorem timed out at 302s/0 nodes; remaining 23 each took ~15s/1 node (wrong tactics fail elaboration immediately).
+- **12 test_pipeline.py theorems:** 0/12 proved. Same pattern: all fail after 1 node.
+
+**Root cause — wrong prompt format:**
+
+The model was prompted using a Deepseek-Coder chat template (`### Instruction: give me next tactic ### Response:`) — but DeepSeek-Prover-V1.5-RL was trained for **whole-proof completion** from a Lean 4 file header, not single-tactic prediction from a chat instruction. The model interpreted the prompt as a math question to answer in natural language, and generated:
+- Multi-paragraph English explanations of derivative/calculus problems
+- Chinese math tutorial text (the model saw extensive Chinese math data)
+- Multi-line Lean 4 files with import statements and full theorem declarations
+
+Example top-5 "tactics" generated (all wrong):
+1. `"To solve the problem, we need to determine the derivative of the function..."` (English paragraph)
+2. `"lean4\n1020, theorem differentiable_id,..."` (full Lean file snippet)
+3. `"### Proof State Analysis\n\nThe proof state provided is incomplete..."` (markdown)
+4. Chinese calculus tutorial text (step-by-step derivative computation)
+5. `"To solve the problem of finding the next step..."` (meta-explanation)
+
+**Fix implemented (2026-06-25):**
+
+Changed DeepSeek integration to use its correct **whole-proof generation** format:
+
+```python
+# Correct prompt — ends with `:= by\n  `, model generates the proof body:
+f"import Mathlib\nimport Aesop\n\nset_option maxHeartbeats 400000\n\n"
+f"open BigOperators Real Nat Topology Finset\n\n"
+f"example (c : ℝ) : Continuous (fun _ : ℝ => c) := by\n  "
+```
+
+Architecture change (`search.py`):
+- Added `_prove_deepseek_whole_proof()`: generates `top_k` complete proof scripts BEFORE opening the REPL, then tries them in one Dojo session (rejected tactics leave state unchanged, so we try all scripts' first tactics, filter to survivors, then try second tactics from matching scripts, etc.)
+- `prove()` now routes `DeepSeekProverModel` through this method; ByT5/other models continue using `_prove_best_first()`
+
+New SLURM job submitted for re-evaluation (see §5.12).
+
+---
+
+### 5.12 DeepSeek Re-run with Correct Whole-Proof Prompt
+
+**Date:** 2026-06-25  
+**Change:** Replaced chat-template prompt with Lean 4 file completion format; rewrote `DeepSeekProverModel.generate_proofs()` and `ProofSearch._prove_deepseek_whole_proof()`.
+
+**SLURM job:** Submitted (results pending). See `logs/deepseek_proof_search_<job_id>.log`.
+
+Key files changed:
+- `prover/tactic_model.py`: `_DEEPSEEK_PROVER_HEADER` (Lean file imports), `generate_proofs()` method, `_extract_deepseek_tactics()` helper
+- `prover/search.py`: `_prove_deepseek_whole_proof()`, `_prove_best_first()` (split from `prove()`)
+- `scripts/run_deepseek_proof_search.sh`: Step 0 sanity check now calls `generate_proofs()` to validate script format
 
 ---
 
