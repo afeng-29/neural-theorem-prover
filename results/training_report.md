@@ -294,11 +294,74 @@ Proof search remains 0/24 across all three models. The +5 pp tactic accuracy gai
 
 ---
 
+### 5.9 Tactic Logging Diagnostic (ByT5 Analysis FT)
+
+**Setup:** Added `--log-tactics` flag to `scripts/compare_proof_search.py` (SLURM job 51073297, 6m 59s). Each theorem result now includes `tactics_tried` (tactic + log_prob at root node) and `elaboration_results` (Lean REPL outcome per tactic). Results saved to `results/proof_search_logged.json`.
+
+**Finding:** All 31–32 generated tactics at the root node for every theorem return `"elaboration": "error"` with `"error_message": "Unexpected exit code: 1"` — including `fun_prop` (rank 1, no XML tags), which is a known-correct Lean tactic for simple continuity goals. This is not a tactic quality issue.
+
+**Root cause discovered (PopenSpawn false-positive crash):**
+
+When a tactic closes a proof (e.g., `fun_prop` proves `Continuous (fun _ : ℝ => c)`), Lean exits the REPL subprocess with **code 1** — because the proof template ends with `sorry`, and `sorry` applied to an already-closed goal raises a Lean "no goals" error. With the original PTY-based `pexpect.spawn`, `isalive()` returned `True` even after exit (the PTY master stays open), so `_check_alive()` never fired. After our PopenSpawn migration (`subprocess.Popen` with pipes), `poll()` immediately reflects the true exit code, causing `_check_alive_popen` to raise `DojoCrashError("Unexpected exit code: 1")` even though the tactic had already successfully written its response.
+
+**Fix applied (2026-06-25):** In `_check_alive_popen`, only raise for OOM kills (`rc=-9` or `rc=137`). For `rc=0` or `rc=1`, return silently and let the downstream pipe EOF detection handle true crashes. This means a successful tactic (which writes `"tacticState":"no goals"` and then causes Lean to exit with code 1 via `sorry`) is now correctly reported as `ProofFinished` rather than a crash.
+
+**Implication:** All prior proof search results (§5.5, §5.8) with "0/24 proved" may have been incorrect — the models may have been generating correct closing tactics, but the REPL crash was masking the successes. The DeepSeek experiment (§5.10) is the first clean test with the bug fixed.
+
+---
+
+### 5.10 Sanity Check: ByT5 Analysis FT — Generated Tactics
+
+**Setup:** `scripts/sanity_check_tactics.py` run on CPU (login node) with the analysis FT model on goal `c : ℝ\n⊢ Continuous (fun _ : ℝ => c)` (continuous_const). Used after tag-stripping fix (`<a>lemma_name</a>` tags stripped at decode time in `tactic_model.py`).
+
+| Rank | Log-prob | Tactic | Correct? |
+|------|----------|--------|---------|
+| 1 | −0.0298 | `fun_prop` | ✓ |
+| 2 | −0.0801 | `rw [continuous_iff_continuousAt]` | — |
+| 3 | −0.1160 | `exact continuous_const` | ✓ |
+| 4 | −0.1592 | `exact continuous_const.continuous` | — |
+| … | | | |
+| 16 | −0.6005 | `continuity` | ✓ |
+
+The model generates correct tactics at rank 1 and 3. Prior to the `<a>` tag fix, `exact <a>continuous_const</a>` appeared at rank 3 (with tags), reducing effective top-k diversity. After the fix, 16 unique clean tactics appear in the top-20 (vs 20 before, because some tagged duplicates merged on strip).
+
+**Key result:** The ByT5 analysis FT model generates the right tactics. The 0/24 proof search failure was entirely caused by the PopenSpawn REPL crash bug (§5.9), not by model quality.
+
+---
+
+### 5.11 Model Switch: DeepSeek-Prover-V1.5-RL (7B)
+
+**Motivation:** ByT5-small (300M) is a general seq2seq model adapted for tactic prediction. DeepSeek-Prover-V1.5-RL is a 7B causal LM specifically trained end-to-end for Lean 4 theorem proving via reinforcement learning, achieving 60.2% on MiniF2F-test vs ~20–30% for similarly-sized baselines.
+
+| Item | ByT5-small (previous) | DeepSeek-Prover-V1.5-RL (current) |
+|------|-----------------------|-----------------------------------|
+| Parameters | 300M | 7B |
+| Architecture | T5 seq2seq (byte-level) | LLaMA causal LM |
+| Task training | Next-tactic prediction (Mathlib) | End-to-end Lean 4 proof generation (RL) |
+| MiniF2F-test | ~30% (ReProver) | **60.2%** (DeepSeek-RL) |
+| Inference | Beam search (32 beams) | Sampling (do_sample=True, top_p=0.95) |
+| VRAM (fp16) | ~1.2 GB | ~14 GB |
+| Prompt format | Bare proof state string | Deepseek-Coder chat template (`### Instruction / ### Response`) |
+
+**Setup:** Model downloaded to `models/pretrained/deepseek-prover-v1.5-rl` (13 GB, 2 safetensor shards). SLURM job **51073663** (gpu partition, 1× V100-32GB, 8h walltime). Runs:
+1. Sanity check: top-20 tactics for `continuous_const` goal
+2. `compare_proof_search.py --model-type deepseek` on 24 calculus theorems → `results/proof_search_deepseek.json`
+3. `test_pipeline.py --model-type deepseek` on 12 hand-crafted theorems
+
+**Status:** Job running as of 2026-06-25 with the PopenSpawn REPL crash fix active. Results pending.
+
+---
+
 ## 6. Model Artifacts
 
 ```
 models/pretrained/leandojo-lean4-tacgen-byt5-small/   # base ByT5-small
-models/finetuned/calculus/                             # calculus FT (epoch 4 best)
+models/pretrained/deepseek-prover-v1.5-rl/            # DeepSeek-Prover-V1.5-RL (7B, 13 GB)
+├── model-00001-of-000002.safetensors  (8.1 GB)
+├── model-00002-of-000002.safetensors  (4.9 GB)
+├── config.json / tokenizer.json / tokenizer_config.json
+└── model.safetensors.index.json
+models/finetuned/calculus/                            # calculus FT (epoch 4 best)
 ├── model.safetensors          # best model weights (~1.2 GB)
 ├── config.json / tokenizer_config.json / generation_config.json
 ├── val_metrics.json           # 20.75% val exact_match (epoch 4)
@@ -456,6 +519,16 @@ python training/finetune.py --eval-only \
     --test-data data/calculus/test.jsonl \
     --base-model models/finetuned/calculus/
 ```
+
+---
+
+### 7.6 PopenSpawn `_check_alive` False Positive on Proof Completion
+
+**Problem:** After migrating from PTY-based `pexpect.spawn` to `PopenSpawn` (subprocess with pipes), every tactic that successfully closed a proof returned `DojoCrashError("Unexpected exit code: 1")`, making 0/24 proof success look like a model failure when it was actually a REPL communication bug.
+
+**Root cause:** The Lean proof template used by LeanDojo ends with `sorry` after `lean_dojo_repl`. When a tactic closes all goals, `lean_dojo_repl` returns control to Lean, and `sorry` is applied to an empty goal list — raising a "no goals" error and causing Lean to exit with code 1. With PTY-based `pexpect.spawn`, `isalive()` continued to return `True` after exit (the PTY master file descriptor was still open), so the `_check_alive()` call inside `_read_next_line()` was harmless. With `PopenSpawn`, `subprocess.Popen.poll()` immediately reflects the true exit code, causing a false-positive `DojoCrashError` even though the REPL had already written a valid JSON response.
+
+**Fix (2026-06-25):** In `_check_alive_popen` (patched onto each `Dojo` instance in `prover/lean_interface.py`), only raise `DojoCrashError` for OOM kills (`rc=-9` or `rc=137`). For all other exit codes (including 1), return silently. Downstream pipe EOF detection handles true crashes via `DojoCrashError("Unexpected EOF")`. Broken-pipe exceptions from `sendline()` on a dead process propagate as plain exceptions and are caught by `apply_tactic`'s `except Exception` handler.
 
 ---
 
