@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Optional
 
 from .lean_interface import LeanInterface, StepResult, format_state_for_model
-from .tactic_model import TacticModel, TacticCandidate
+from .tactic_model import TacticModel, TacticCandidate, CausalLMTacticModel, DeepSeekProverModel
 
 logger = logging.getLogger(__name__)
 
@@ -85,9 +85,25 @@ class ProofSearch:
         lean_project: str | Path = "./lean_project",
         top_k: int = 32,
         device: Optional[str] = None,
+        model=None,
+        model_type: str = "byt5",
     ):
+        """
+        model:      Pre-constructed model object (TacticModel, DeepSeekProverModel, etc.).
+                    If provided, model_path and model_type are ignored.
+        model_type: "byt5"    — ByT5-small ReProver (default)
+                    "deepseek" — DeepSeek-Prover-V1.5-RL (7B, needs GPU)
+                    "causal"   — generic CausalLM (set model_path to HF model id)
+        """
         self.top_k = top_k
-        self._model = TacticModel(model_path=model_path, device=device)
+        if model is not None:
+            self._model = model
+        elif model_type == "deepseek":
+            self._model = DeepSeekProverModel(model_id=model_path, device=device)
+        elif model_type == "causal":
+            self._model = CausalLMTacticModel(model_id=str(model_path), device=device)
+        else:
+            self._model = TacticModel(model_path=model_path, device=device)
         self._lean = LeanInterface(lean_project_path=lean_project)
 
     # ── Public API ─────────────────────────────────────────────────────────────

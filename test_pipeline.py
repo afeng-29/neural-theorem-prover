@@ -56,6 +56,11 @@ def main():
                         help="Max proof search depth")
     parser.add_argument("--top-k", type=int, default=32,
                         help="Tactic candidates per step")
+    parser.add_argument("--model-type", default="byt5",
+                        choices=["byt5", "deepseek", "causal"],
+                        help="byt5: ByT5-small ReProver (default); "
+                             "deepseek: DeepSeek-Prover-V1.5-RL (7B, needs GPU); "
+                             "causal: generic causal LM")
     parser.add_argument("--dry-run", action="store_true",
                         help="Skip actual Lean interaction (for smoke-testing imports)")
     parser.add_argument("--verify-only", action="store_true",
@@ -77,11 +82,12 @@ def main():
     from prover import ProofSearch
     from prover.tactic_model import TacticModel
 
-    logger.info("Initializing ProofSearch...")
+    logger.info("Initializing ProofSearch (model_type=%s)...", args.model_type)
     prover = ProofSearch(
         model_path=args.model_path,
         lean_project=args.lean_project,
         top_k=args.top_k,
+        model_type=args.model_type,
     )
 
     if args.verify_only:
