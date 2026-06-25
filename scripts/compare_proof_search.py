@@ -112,7 +112,7 @@ CALCULUS_THEOREMS: list[tuple[str, str, list[str], str]] = [
 
 
 def run_search(model_path: str, lean_project: str, timeout: float,
-               top_k: int) -> list[dict]:
+               top_k: int, log_tactics: bool = False) -> list[dict]:
     prover = ProofSearch(
         model_path=model_path,
         lean_project=lean_project,
@@ -129,7 +129,14 @@ def run_search(model_path: str, lean_project: str, timeout: float,
         r = prover.prove(thm, hyps, timeout=timeout)
         status = "OK" if r.verified else "FAIL"
         print(f"{status} ({r.elapsed_seconds:.0f}s, {r.search_nodes_expanded} nodes)")
-        results.append({
+
+        if log_tactics and r.root_tactics:
+            n_err = sum(1 for t in r.root_tactics if t["elaboration"] == "error")
+            n_ok  = sum(1 for t in r.root_tactics if t["elaboration"] in ("success", "complete"))
+            print(f"    root tactics: {len(r.root_tactics)} total, {n_ok} elaborated, {n_err} errored")
+            print(f"    top-5: {[t['tactic'] for t in r.root_tactics[:5]]}")
+
+        entry: dict = {
             "label": label,
             "theorem": thm,
             "hypotheses": hyps,
@@ -139,7 +146,17 @@ def run_search(model_path: str, lean_project: str, timeout: float,
             "nodes_expanded": r.search_nodes_expanded,
             "elapsed_seconds": r.elapsed_seconds,
             "error": r.error,
-        })
+        }
+        if log_tactics:
+            entry["tactics_tried"] = [
+                {"tactic": t["tactic"], "log_prob": t["log_prob"]}
+                for t in r.root_tactics
+            ]
+            entry["elaboration_results"] = [
+                {k: v for k, v in t.items() if k != "log_prob"}
+                for t in r.root_tactics
+            ]
+        results.append(entry)
     return results
 
 
@@ -185,6 +202,8 @@ def main():
                         help="Which model(s) to run (use 'pretrained' or 'finetuned' to run only one)")
     parser.add_argument("--output", default="results/proof_search_comparison.json",
                         help="Path to write JSON results (default: results/proof_search_comparison.json)")
+    parser.add_argument("--log-tactics", action="store_true",
+                        help="Include tactics_tried and elaboration_results for the root node in output JSON")
     args = parser.parse_args()
 
     Path("results").mkdir(exist_ok=True)
@@ -196,14 +215,14 @@ def main():
         print(f"Running PRETRAINED model  ({args.pretrained})")
         print("=" * 70)
         pre_results = run_search(args.pretrained, args.lean_project,
-                                 args.timeout, args.top_k)
+                                 args.timeout, args.top_k, args.log_tactics)
 
     if args.model in ("both", "finetuned"):
         print("\n" + "=" * 70)
         print(f"Running FINE-TUNED model  ({args.finetuned})")
         print("=" * 70)
         ft_results = run_search(args.finetuned, args.lean_project,
-                                args.timeout, args.top_k)
+                                args.timeout, args.top_k, args.log_tactics)
 
     if pre_results and ft_results:
         print_comparison(pre_results, ft_results)

@@ -44,6 +44,9 @@ class ProofResult:
     search_nodes_expanded: int
     elapsed_seconds: float
     error: str = ""          # set if something failed unexpectedly
+    root_tactics: list[dict] = field(default_factory=list)
+    # Each entry: {tactic, log_prob, elaboration: "complete"|"success"|"error",
+    #              next_state (if success), error_message (if error)}
 
 
 @dataclass(order=True)
@@ -110,6 +113,7 @@ class ProofSearch:
         hypotheses = hypotheses or []
         t_open_start = time.monotonic()
         nodes_expanded = 0
+        _root_tactics: list[dict] = []
 
         try:
             with self._lean.open_proof(theorem, hypotheses) as session:
@@ -138,7 +142,6 @@ class ProofSearch:
                     depth=0,
                 )
                 heapq.heappush(heap, root)
-
                 while heap:
                     if time.monotonic() - t_start > timeout:
                         logger.info("Proof search timed out after %.1fs", timeout)
@@ -150,6 +153,7 @@ class ProofSearch:
                         continue
 
                     nodes_expanded += 1
+                    is_root_node = nodes_expanded == 1
                     logger.debug(
                         "Expanding node depth=%d, nodes_so_far=%d\n  state: %s",
                         node.depth, nodes_expanded, node.state[:120],
@@ -165,6 +169,18 @@ class ProofSearch:
 
                         result = session.apply_tactic(cand.tactic)
 
+                        if is_root_node:
+                            entry: dict = {"tactic": cand.tactic, "log_prob": cand.log_prob}
+                            if result.is_complete:
+                                entry["elaboration"] = "complete"
+                            elif result.success:
+                                entry["elaboration"] = "success"
+                                entry["next_state"] = result.next_state
+                            else:
+                                entry["elaboration"] = "error"
+                                entry["error_message"] = result.error_message
+                            _root_tactics.append(entry)
+
                         if result.is_complete:
                             # Found a complete proof
                             tactic_seq = node.tactic_history + [cand.tactic]
@@ -179,6 +195,7 @@ class ProofSearch:
                                 steps=state_seq,
                                 search_nodes_expanded=nodes_expanded,
                                 elapsed_seconds=time.monotonic() - t_open_start,
+                                root_tactics=_root_tactics,
                             )
 
                         if result.success:
@@ -200,6 +217,7 @@ class ProofSearch:
                 search_nodes_expanded=nodes_expanded,
                 elapsed_seconds=time.monotonic() - t_open_start,
                 error=str(e),
+                root_tactics=_root_tactics,
             )
 
         # Exhausted search space without finding a proof
@@ -209,6 +227,7 @@ class ProofSearch:
             steps=[],
             search_nodes_expanded=nodes_expanded,
             elapsed_seconds=time.monotonic() - t_open_start,
+            root_tactics=_root_tactics,
         )
 
     def verify_proof(

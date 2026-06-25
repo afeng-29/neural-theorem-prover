@@ -18,9 +18,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+import re
 import torch
 
 logger = logging.getLogger(__name__)
+
+# LeanDojo training data annotates retrieved premises with <a>lemma_name</a> tags.
+# Strip these before passing tactics to Lean — they are metadata, not syntax.
+_TAG_RE = re.compile(r"</?a>")
 
 
 @dataclass
@@ -132,7 +137,7 @@ class TacticModel:
         candidates = []
         seen: set[str] = set()
         for seq, score in zip(sequences, scores):
-            tactic = self._tokenizer.decode(seq, skip_special_tokens=True).strip()
+            tactic = _TAG_RE.sub("", self._tokenizer.decode(seq, skip_special_tokens=True)).strip()
             if tactic and tactic not in seen:
                 seen.add(tactic)
                 candidates.append(TacticCandidate(tactic=tactic, log_prob=float(score)))
