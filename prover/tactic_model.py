@@ -269,14 +269,20 @@ def _extract_deepseek_tactics(text: str) -> list[str]:
     We keep non-empty stripped lines until we hit a stop marker (new
     theorem/import declaration, markdown fence, or a blank-line + keyword
     that signals the proof ended).
+
+    The DeepSeek tokenizer encodes space as Ġ (U+0120) and newline as Ċ
+    (U+010A) rather than converting them back to ASCII; normalise first.
     """
+    # Reverse the BPE byte-as-unicode encoding used by GPT-2/DeepSeek tokenizers.
+    # Ġ (U+0120) → space (0x20), Ċ (U+010A) → newline (0x0A).
+    text = text.replace("Ġ", " ").replace("Ċ", "\n")
+
     _STOP_PREFIXES = ("import ", "theorem ", "lemma ", "def ", "open ",
-                      "#check", "#eval", "```", "--", "/-")
+                      "#check", "#eval", "```", "--", "/-", "example")
     tactics = []
     for line in text.split("\n"):
         stripped = line.strip()
         if not stripped:
-            # One blank line is fine (proof continuation); stop after second
             continue
         if any(stripped.startswith(p) for p in _STOP_PREFIXES):
             break
