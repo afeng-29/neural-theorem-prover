@@ -262,7 +262,35 @@ Early stopping did not trigger (exact_match kept improving through epoch 10 desp
 
 *Calculus FT metrics evaluated on 117 calculus-specific test examples; analysis FT evaluated on 587 analysis test examples (broader, harder domain).
 
-**Interpretation:** The analysis model scores 12.95% top-1 on the 587-example analysis test set, compared to 16.24% on the narrower 117-example calculus test set for the calculus model. This is not a regression — the test sets are different and the analysis domain is substantially broader (Sobolev spaces, normed vector spaces, measure theory, etc.). The warm start from the calculus checkpoint helped: early epochs begin at 8.9% vs 11.3% for the cold-start calculus run, reflecting that the calculus foundation partially transfers. The val loss diverges from exact_match after epoch 3, which is typical for generation tasks — the model generates more correct sequences even as cross-entropy loss increases, because it learns to be less uncertain on the long tail of incorrect tokens.
+**Interpretation:** The analysis model scores 12.95% top-1 on the 587-example analysis test set. This is not directly comparable to the calculus model's 16.24% — the test sets differ and the analysis domain is substantially broader (Sobolev spaces, normed vector spaces, measure theory, etc.). See §5.8 for a controlled 3-way comparison on the same 117 calculus examples. The warm start from the calculus checkpoint helped: early epochs begin at 8.9% vs 11.3% for the cold-start calculus run, reflecting that the calculus foundation partially transfers. The val loss diverges from exact_match after epoch 3, which is typical for generation tasks — the model generates more correct sequences even as cross-entropy loss increases, because it learns to be less uncertain on the long tail of incorrect tokens.
+
+---
+
+### 5.8 Three-Way Comparison on Calculus Test Set (117 examples)
+
+To make a fair comparison between all three model checkpoints, the analysis model was evaluated on the same 117-example calculus test set used for §5.3 (SLURM job 51071322, 8m 42s).
+
+#### Tactic accuracy (top-k exact match)
+
+| Model | Training data | Top-1 | Top-10 | Δ top-1 vs pretrained |
+|-------|--------------|-------|--------|----------------------|
+| Pretrained (baseline) | — | 5.98% | 11.11% | — |
+| Calculus FT | 6,734 calculus examples | 16.24% | 21.37% | +10.26 pp (+172%) |
+| **Analysis FT** | **32,715 analysis examples** | **21.37%** | **26.50%** | **+15.39 pp (+257%)** |
+
+The analysis model improves top-1 by a further **+5.13 pp** over the calculus model on the same test set — confirming that the broader training data helps even within the narrow calculus sub-domain.
+
+#### Proof search on 24 ProofGoals theorems (analysis model)
+
+Evaluated via `scripts/compare_proof_search.py --model finetuned` with `--finetuned models/finetuned/analysis/`, saving to `results/proof_search_analysis.json`.
+
+| Metric | Analysis FT | Calculus FT | Pretrained |
+|--------|------------|------------|-----------|
+| Theorems proved | **0/24** | 0/24 | 0/24 |
+| Avg elapsed | 15.5s | 7.2s | 10.9s |
+| Avg nodes expanded | 1.00 | 1.00 | 1.00 |
+
+Proof search remains 0/24 across all three models. The +5 pp tactic accuracy gain is not yet sufficient to close any theorem in a single first-shot tactic — all 32 candidates still fail REPL elaboration at the root node. Proof search success requires either (a) a much higher top-1 accuracy so the correct tactic ranks first, or (b) multi-step search that expands beyond 1 node, which requires at least one tactic to partially succeed and produce a new subgoal state.
 
 ---
 

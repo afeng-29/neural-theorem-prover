@@ -264,6 +264,7 @@ def evaluate_top_k(
     n_samples: Optional[int] = None,
     device: Optional[str] = None,
     seed: int = 42,
+    metrics_output: Optional[str] = None,
 ) -> dict:
     """
     Measures top-1 and top-k exact-match tactic accuracy on test data.
@@ -313,7 +314,7 @@ def evaluate_top_k(
     }
     logger.info("Top-1: %.3f  Top-%d: %.3f  (n=%d)", results["top1_exact_match"], k, results[f"top{k}_exact_match"], n)
 
-    out_path = Path(model_path) / "test_metrics.json"
+    out_path = Path(metrics_output) if metrics_output else Path(model_path) / "test_metrics.json"
     with open(out_path, "w") as f:
         json.dump(results, f, indent=2)
     logger.info("Test metrics saved to %s", out_path)
@@ -352,6 +353,8 @@ def main():
                         help="Limit test evaluation to this many examples")
     parser.add_argument("--eval-only",  action="store_true",
                         help="Skip training, only run top-k evaluation on --test-data")
+    parser.add_argument("--metrics-output", default=None,
+                        help="Save test metrics to this path instead of <model>/test_metrics.json")
     args = parser.parse_args()
 
     if not args.eval_only:
@@ -382,6 +385,7 @@ def main():
             test_paths=args.test_data,
             k=args.top_k,
             n_samples=args.n_samples,
+            metrics_output=args.metrics_output,
         )
 
 

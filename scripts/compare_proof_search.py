@@ -183,6 +183,8 @@ def main():
     parser.add_argument("--model", choices=["both", "pretrained", "finetuned"],
                         default="both",
                         help="Which model(s) to run (use 'pretrained' or 'finetuned' to run only one)")
+    parser.add_argument("--output", default="results/proof_search_comparison.json",
+                        help="Path to write JSON results (default: results/proof_search_comparison.json)")
     args = parser.parse_args()
 
     Path("results").mkdir(exist_ok=True)
@@ -232,7 +234,7 @@ def main():
             "results": ft_results,
         }
 
-    out_path = "results/proof_search_comparison.json"
+    out_path = args.output
     with open(out_path, "w") as f:
         json.dump(output, f, indent=2)
     print(f"\nSaved to {out_path}")
