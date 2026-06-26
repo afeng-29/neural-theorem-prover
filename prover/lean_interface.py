@@ -377,6 +377,59 @@ def _patch_leandojo_local_repo() -> None:
 
             self_dojo._check_alive = _types.MethodType(_check_alive_popen, self_dojo)
 
+            # Patch _read_next_line to handle PopenSpawn blank-line false-positive.
+            #
+            # In _read_next_line's loop: when proc.expect("\n") matches and
+            # proc.before == "", the original code raises EOFError. In PTY mode this
+            # is correct because TTY line endings are "\r\n" — a blank line produces
+            # before="\r", not "". In PopenSpawn mode pipe output uses bare "\n", so
+            # blank lines DO produce before="". Any tactic that generates a multi-line
+            # error message (e.g. "apply Continuous.const") causes a blank line in
+            # Lean's output, which falsely raises EOFError, breaks the session, and
+            # makes every subsequent tactic fail with "[Errno 32] Broken pipe".
+            # Fix: when before=="" and proc.expect matched \n, check whether the
+            # process has truly exited before raising EOFError.
+            import pexpect as _pexpect_mod
+            from lean_dojo.interaction.dojo import (
+                DojoTacticTimeoutError as _DTT3,
+            )
+            from loguru import logger as _loguru3
+
+            def _read_next_line_popen(self_dojo2):
+                _REPL_PROMPT = "REPL>"
+                msg = []
+                while True:
+                    try:
+                        index = self_dojo2.proc.expect(
+                            ["\n", f"{_REPL_PROMPT}.*?\n"]
+                        )
+                        if index == 0:
+                            before = self_dojo2.proc.before
+                            if before == "":
+                                # Original code raises EOFError here unconditionally.
+                                # With PopenSpawn, this also fires on blank lines in
+                                # Lean's output. Only raise if the process is gone.
+                                if _popen_inner.poll() is not None:
+                                    raise EOFError
+                                # else: blank line, process alive — skip
+                                continue
+                            else:
+                                msg.append(before.strip())
+                                continue
+                        self_dojo2._check_alive()
+                        res = self_dojo2.proc.match.string[len(_REPL_PROMPT):].strip()
+                        return res, "\n".join(msg) + self_dojo2.proc.before
+                    except _pexpect_mod.EOF:
+                        raise EOFError
+                    except _pexpect_mod.TIMEOUT:
+                        _loguru3.debug("Tactic timed out")
+                        self_dojo2.has_timedout = True
+                        raise _DTT3()
+
+            self_dojo._read_next_line = _types.MethodType(
+                _read_next_line_popen, self_dojo
+            )
+
             # Hard wall-clock deadline for init: pexpect's per-expect timeout resets on
             # every newline (sorry warnings, build output), so can greatly exceed
             # self_dojo.timeout when Lean prints many lines. A threading.Timer fires
