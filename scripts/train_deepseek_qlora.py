@@ -73,29 +73,29 @@ class CalculusDataset(Dataset):
 
     def __getitem__(self, idx: int) -> dict:
         prompt, completion = self.examples[idx]
-        full_text = prompt + completion
 
-        enc = self.tokenizer(
-            full_text,
-            max_length=self.max_length,
-            truncation=True,
-            padding=False,
-            return_tensors="pt",
-        )
-        input_ids = enc["input_ids"].squeeze(0)
+        # Tokenize completion first to know how many tokens to reserve.
+        # Naive approach (truncate full_text then mask prompt_len) fails when the
+        # proof state is so long it fills the entire window — tactic gets cut off,
+        # ALL labels become -100, cross-entropy = NaN. 2.9% of training examples hit this.
+        comp_ids = self.tokenizer(
+            completion, padding=False, return_tensors="pt",
+        )["input_ids"].squeeze(0)
+        n_comp = comp_ids.shape[0]
 
-        # Build labels: mask the prompt portion (compute loss only on completion)
-        prompt_enc = self.tokenizer(
-            prompt,
-            max_length=self.max_length,
-            truncation=True,
-            padding=False,
+        # Truncate the prompt to leave room for the full completion
+        prompt_max = max(self.max_length - n_comp, 1)
+        prompt_ids = self.tokenizer(
+            prompt, max_length=prompt_max, truncation=True, padding=False,
             return_tensors="pt",
-        )
-        prompt_len = prompt_enc["input_ids"].shape[1]
+        )["input_ids"].squeeze(0)
+
+        # Concatenate: prompt (possibly truncated) + full tactic
+        input_ids = torch.cat([prompt_ids, comp_ids], dim=0)[:self.max_length]
+        prompt_len = prompt_ids.shape[0]
 
         labels = input_ids.clone()
-        labels[:prompt_len] = -100  # mask prompt
+        labels[:prompt_len] = -100  # mask prompt; tactic tokens always unmasked
 
         return {"input_ids": input_ids, "labels": labels}
 
