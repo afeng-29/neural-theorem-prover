@@ -375,6 +375,7 @@ class DeepSeekProverModel:
         self.lora_adapter = lora_adapter  # path to saved PEFT LoRA adapter dir
         self._model = None
         self._tokenizer = None
+        self._generate_batch = 8  # adaptive: reduced on OOM, persists across goals
 
     def _ensure_loaded(self):
         if self._model is not None:
@@ -448,11 +449,11 @@ class DeepSeekProverModel:
         prompt_len = inputs["input_ids"].shape[1]
 
         # Generate in small batches to limit KV-cache VRAM (32 at once OOMs on ≤16GB GPUs).
-        _BATCH = 8
+        # self._generate_batch persists across goals so we don't retry OOM sizes each call.
         proofs: list[list[str]] = []
         remaining = n
         while remaining > 0:
-            bs = min(_BATCH, remaining)
+            bs = min(self._generate_batch, remaining)
             try:
                 outputs = self._model.generate(
                     **inputs,
@@ -470,8 +471,8 @@ class DeepSeekProverModel:
                 if bs == 1:
                     logger.warning("generate_proofs: OOM with batch_size=1, aborting")
                     break
-                _BATCH = max(1, _BATCH // 2)
-                logger.warning("generate_proofs: OOM, reducing batch_size to %d", _BATCH)
+                self._generate_batch = max(1, self._generate_batch // 2)
+                logger.warning("generate_proofs: OOM, reducing batch_size to %d", self._generate_batch)
                 continue
             for seq in outputs:
                 text = self._tokenizer.decode(seq[prompt_len:], skip_special_tokens=True)
