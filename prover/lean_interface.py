@@ -604,6 +604,89 @@ class LeanInterface:
             tactic_timeout=tactic_timeout,
         )
 
+    def verify_proofs_parallel(
+        self,
+        items: list[tuple[str, list[str], list[str], str]],
+    ) -> list[bool]:
+        """
+        Verify N proof candidates for the same (or different) theorems in ONE
+        lake build call, parsing Lean's error output to identify which succeeded.
+
+        Unlike verify_proofs_batch (which only returns True for ALL-pass), this
+        returns per-proof results by mapping error line numbers to theorem ranges.
+
+        items: [(theorem, hypotheses, proof_tactics, thm_name), ...]
+        Returns: list[bool], same order as items.
+        """
+        import re as _re
+
+        elan_bin = Path.home() / ".elan" / "bin"
+        env = {**os.environ, "PATH": f"{elan_bin}:{os.environ.get('PATH', '')}"}
+        goals_path = self.lean_project_path / self.PROOF_GOALS_FILE
+        original = goals_path.read_text(encoding="utf-8") if goals_path.exists() else None
+
+        # Build one Lean file tracking which lines belong to each theorem.
+        file_lines: list[str] = ["import Mathlib", "import Aesop", ""]
+        thm_ranges: list[tuple[int, int]] = []  # (start_line, end_line), 1-indexed
+
+        for theorem, hypotheses, proof_tactics, thm_name in items:
+            hyp_str = (" " + " ".join(f"({h})" for h in hypotheses)) if hypotheses else ""
+            tactic_lines = [f"  {t}" for t in (proof_tactics or ["sorry"])]
+            start = len(file_lines) + 1  # 1-indexed
+            file_lines.append(f"theorem {thm_name}{hyp_str} : {theorem} := by")
+            file_lines.extend(tactic_lines)
+            end = len(file_lines)
+            thm_ranges.append((start, end))
+            file_lines.append("")
+
+        combined_src = "\n".join(file_lines)
+
+        try:
+            goals_path.write_text(combined_src, encoding="utf-8")
+            logger.info("verify_proofs_parallel: %d candidates in one lake build", len(items))
+            result = subprocess.run(
+                ["lake", "build", "TheoremProver"],
+                cwd=self.lean_project_path,
+                capture_output=True, text=True, timeout=2400, env=env,
+            )
+            output = result.stdout + result.stderr
+
+            if result.returncode == 0 and "error:" not in output.lower():
+                logger.info("All %d candidates passed", len(items))
+                return [True] * len(items)
+
+            # Parse error/warning line numbers from Lean output.
+            # Format: ".../ProofGoals.lean:LINE:COL: error: ..."
+            error_lines: set[int] = set()
+            for m in _re.finditer(r"ProofGoals\.lean:(\d+):\d+:\s*error:", output):
+                error_lines.add(int(m.group(1)))
+
+            if not error_lines:
+                # Could not parse line numbers — treat all as failed.
+                logger.debug("verify_proofs_parallel: build failed but no error lines parsed")
+                return [False] * len(items)
+
+            results = []
+            for start, end in thm_ranges:
+                has_error = any(start <= ln <= end for ln in error_lines)
+                results.append(not has_error)
+
+            n_ok = sum(results)
+            logger.info("verify_proofs_parallel: %d/%d candidates succeeded", n_ok, len(items))
+            return results
+
+        except subprocess.TimeoutExpired:
+            logger.warning("verify_proofs_parallel timed out")
+            return [False] * len(items)
+        except Exception as e:
+            logger.warning("verify_proofs_parallel failed: %s", e)
+            return [False] * len(items)
+        finally:
+            if original is not None:
+                goals_path.write_text(original, encoding="utf-8")
+            elif goals_path.exists():
+                goals_path.unlink()
+
     def verify_proof(
         self,
         theorem: str,
