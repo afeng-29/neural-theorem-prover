@@ -113,18 +113,21 @@ CALCULUS_THEOREMS: list[tuple[str, str, list[str], str]] = [
 
 def run_search(model_path: str, lean_project: str, timeout: float,
                top_k: int, log_tactics: bool = False,
-               model_type: str = "byt5", load_in_4bit: bool = False) -> list[dict]:
+               model_type: str = "byt5", load_in_4bit: bool = False,
+               use_subprocess: bool = False) -> list[dict]:
     prover = ProofSearch(
         model_path=model_path,
         lean_project=lean_project,
         top_k=top_k,
         model_type=model_type,
         load_in_4bit=load_in_4bit,
+        use_subprocess=use_subprocess,
     )
 
-    # Batch-prepare theorems so LeanDojo traces them in one lake build
-    batch_items = [(thm, hyps) for _, thm, hyps, _ in CALCULUS_THEOREMS]
-    prover.prepare_theorem_batch(batch_items)
+    if not use_subprocess:
+        # Batch-prepare theorems so LeanDojo traces them in one lake build
+        batch_items = [(thm, hyps) for _, thm, hyps, _ in CALCULUS_THEOREMS]
+        prover.prepare_theorem_batch(batch_items)
 
     results = []
     for label, thm, hyps, difficulty in CALCULUS_THEOREMS:
@@ -212,6 +215,9 @@ def main():
                         help="Model backend: byt5 (default), deepseek (7B), or causal")
     parser.add_argument("--load-in-4bit", action="store_true",
                         help="Load DeepSeek model in 4-bit quantization (fits 16GB GPU)")
+    parser.add_argument("--use-subprocess", action="store_true",
+                        help="ByT5/causal: skip REPL, try each top-k tactic as 1-step "
+                             "proof via lake build subprocess. Clean numbers without REPL.")
     args = parser.parse_args()
 
     Path("results").mkdir(exist_ok=True)
@@ -224,7 +230,8 @@ def main():
         print("=" * 70)
         pre_results = run_search(args.pretrained, args.lean_project,
                                  args.timeout, args.top_k, args.log_tactics,
-                                 args.model_type, args.load_in_4bit)
+                                 args.model_type, args.load_in_4bit,
+                                 args.use_subprocess)
 
     if args.model in ("both", "finetuned"):
         print("\n" + "=" * 70)
@@ -232,7 +239,8 @@ def main():
         print("=" * 70)
         ft_results = run_search(args.finetuned, args.lean_project,
                                 args.timeout, args.top_k, args.log_tactics,
-                                args.model_type, args.load_in_4bit)
+                                args.model_type, args.load_in_4bit,
+                                args.use_subprocess)
 
     if pre_results and ft_results:
         print_comparison(pre_results, ft_results)

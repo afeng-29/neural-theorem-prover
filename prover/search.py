@@ -88,17 +88,22 @@ class ProofSearch:
         model=None,
         model_type: str = "byt5",
         load_in_4bit: bool = False,
+        use_subprocess: bool = False,
     ):
         """
-        model:        Pre-constructed model object (TacticModel, DeepSeekProverModel, etc.).
-                      If provided, model_path and model_type are ignored.
-        model_type:   "byt5"    — ByT5-small ReProver (default)
-                      "deepseek" — DeepSeek-Prover-V1.5-RL (7B, needs GPU)
-                      "causal"   — generic CausalLM (set model_path to HF model id)
-        load_in_4bit: Load DeepSeek model in 4-bit (bitsandbytes). Reduces VRAM from
-                      ~14GB to ~3.5GB; allows running on 16GB V100.
+        model:          Pre-constructed model object (TacticModel, DeepSeekProverModel, etc.).
+                        If provided, model_path and model_type are ignored.
+        model_type:     "byt5"    — ByT5-small ReProver (default)
+                        "deepseek" — DeepSeek-Prover-V1.5-RL (7B, needs GPU)
+                        "causal"   — generic CausalLM (set model_path to HF model id)
+        load_in_4bit:   Load DeepSeek model in 4-bit (bitsandbytes). Reduces VRAM from
+                        ~14GB to ~3.5GB; allows running on 16GB V100.
+        use_subprocess: For non-DeepSeek models (ByT5/causal): skip the interactive REPL
+                        and instead try each top-k tactic as a single-step subprocess
+                        proof. Valid clean numbers without needing a working REPL.
         """
         self.top_k = top_k
+        self._use_subprocess = use_subprocess
         if model is not None:
             self._model = model
         elif model_type == "deepseek":
@@ -133,6 +138,8 @@ class ProofSearch:
         hypotheses = hypotheses or []
         if isinstance(self._model, DeepSeekProverModel):
             return self._prove_deepseek_whole_proof(theorem, hypotheses, timeout, max_depth)
+        if self._use_subprocess:
+            return self._prove_byt5_subprocess(theorem, hypotheses, timeout)
         return self._prove_best_first(theorem, hypotheses, timeout, max_depth, retrieved_premises)
 
     def _prove_deepseek_whole_proof(
@@ -225,6 +232,91 @@ class ProofSearch:
 
         return ProofResult(proof=None, verified=False, steps=[],
                            search_nodes_expanded=len(unique_scripts),
+                           elapsed_seconds=time.monotonic() - t_start,
+                           root_tactics=_root_tactics)
+
+    def _prove_byt5_subprocess(
+        self,
+        theorem: str,
+        hypotheses: list[str],
+        timeout: float,
+    ) -> ProofResult:
+        """
+        REPL-free evaluation for ByT5/CausalLM models via subprocess lake build.
+
+        Instead of opening an interactive REPL (which requires the broken PopenSpawn
+        path), this method:
+          1. Constructs a synthetic proof state from the theorem + hypotheses.
+          2. Asks the model for top-k single-tactic candidates.
+          3. Tries all unique tactics as 1-step proofs in ONE lake build call.
+
+        This measures "1-step provability" — a lower bound on full REPL capability,
+        but gives clean, valid numbers for comparing pretrained vs. fine-tuned ByT5.
+        """
+        import hashlib as _hashlib
+        t_start = time.monotonic()
+
+        # Construct a synthetic Lean proof state:  "hyp1\nhyp2\n⊢ theorem"
+        # This matches the LeanDojo proof-state format ByT5 was trained on.
+        state_lines = list(hypotheses) + [f"⊢ {theorem}"]
+        state_str = "\n".join(state_lines)
+
+        model_input = format_state_for_model(state_str, None)
+        candidates = self._model.predict_tactics(model_input, top_k=self.top_k)
+
+        # Deduplicate tactic candidates
+        seen: set[str] = set()
+        unique_tactics: list[str] = []
+        for cand in candidates:
+            tac = cand.tactic.strip()
+            if tac and tac not in seen:
+                seen.add(tac)
+                unique_tactics.append(tac)
+
+        if not unique_tactics:
+            return ProofResult(proof=None, verified=False, steps=[],
+                               search_nodes_expanded=0,
+                               elapsed_seconds=time.monotonic() - t_start,
+                               error="model produced no tactic candidates")
+
+        _root_tactics = [
+            {"tactic": t, "log_prob": candidates[i].log_prob if i < len(candidates) else 0.0,
+             "elaboration": "unknown"}
+            for i, t in enumerate(unique_tactics[:5])
+        ]
+
+        # Build batch: try each tactic as a complete 1-step proof
+        batch_items = []
+        for i, tac in enumerate(unique_tactics):
+            h = _hashlib.sha1(tac.encode()).hexdigest()[:6]
+            batch_items.append((theorem, hypotheses, [tac], f"byt5_{i}_{h}"))
+
+        try:
+            results = self._lean.verify_proofs_parallel(batch_items)
+        except Exception as e:
+            logger.exception("verify_proofs_parallel failed for ByT5 subprocess")
+            return ProofResult(proof=None, verified=False, steps=[],
+                               search_nodes_expanded=len(unique_tactics),
+                               elapsed_seconds=time.monotonic() - t_start,
+                               error=str(e), root_tactics=_root_tactics)
+
+        for ok, tac in zip(results, unique_tactics):
+            if ok:
+                logger.info("ByT5 proved '%s...' with 1-step tactic: %s", theorem[:40], tac)
+                for rt in _root_tactics:
+                    if rt["tactic"] == tac:
+                        rt["elaboration"] = "complete"
+                return ProofResult(
+                    proof=tac,
+                    verified=True,
+                    steps=[],
+                    search_nodes_expanded=len(unique_tactics),
+                    elapsed_seconds=time.monotonic() - t_start,
+                    root_tactics=_root_tactics,
+                )
+
+        return ProofResult(proof=None, verified=False, steps=[],
+                           search_nodes_expanded=len(unique_tactics),
                            elapsed_seconds=time.monotonic() - t_start,
                            root_tactics=_root_tactics)
 
