@@ -386,14 +386,69 @@ New SLURM job submitted for re-evaluation (see §5.12).
 ### 5.12 DeepSeek Re-run with Correct Whole-Proof Prompt
 
 **Date:** 2026-06-25  
+**SLURM job:** 51083879 (completed 2026-06-25)  
 **Change:** Replaced chat-template prompt with Lean 4 file completion format; rewrote `DeepSeekProverModel.generate_proofs()` and `ProofSearch._prove_deepseek_whole_proof()`.
 
-**SLURM job:** Submitted (results pending). See `logs/deepseek_proof_search_<job_id>.log`.
+#### Step 1 — `scripts/compare_proof_search.py` on 24 calculus theorems
 
-Key files changed:
-- `prover/tactic_model.py`: `_DEEPSEEK_PROVER_HEADER` (Lean file imports), `generate_proofs()` method, `_extract_deepseek_tactics()` helper
-- `prover/search.py`: `_prove_deepseek_whole_proof()`, `_prove_best_first()` (split from `prove()`)
-- `scripts/run_deepseek_proof_search.sh`: Step 0 sanity check now calls `generate_proofs()` to validate script format
+**Config:** DeepSeek-Prover-V1.5-RL 4-bit quantization, `top_k=32`, `timeout=300s`.
+
+| Metric | Result |
+|--------|--------|
+| Theorems attempted | 24 |
+| **Proved** | **22/24 (91.7%)** |
+| Failed | 2 (`differentiable_comp`, `hasDerivAt_const`) |
+| Avg time (warm cache) | ~51–64s per theorem (44s GPU + 7s lake build) |
+| First theorem (cold cache) | ~380s |
+
+Example proofs generated:
+- `exact continuous_const`
+- `apply hasDerivAt_id`
+- `apply Differentiable.mul | apply hf | apply hg`
+- `refine' hf.const_mul c`
+- `exact hf.neg`
+- `apply tendsto_const_nhds`
+
+#### Step 2 — `test_pipeline.py` on 12 basic theorems
+
+| Metric | Result |
+|--------|--------|
+| Theorems attempted | 12 |
+| **Proved** | **12/12 (100%)** |
+
+Example proofs:
+- `rfl` (n+0=n)
+- `simp` (0+n=n)
+- `rw [Nat.add_assoc]`
+- `intro PQ; tauto`
+- `intro h; exact h`
+- `aesop` (impl transitivity)
+- `intros; tauto` (or-comm)
+- `rw[two_mul]`
+- `tauto` (double negation, distributive)
+
+#### Implementation fixes applied for this job
+
+Three bugs were fixed between the §5.11 failure and this run:
+
+1. **PopenSpawn REPL bypass:** `_prove_deepseek_whole_proof` now uses `verify_proofs_parallel` — writes all N unique proof candidates to one `ProofGoals.lean`, runs a single `lake build` subprocess, and parses Lean's error output by line number to identify which scripts compiled without errors. The interactive REPL (`Dojo`/`PopenSpawn`) is bypassed entirely for whole-proof verification, eliminating the false-positive `DojoCrashError` issue documented in §5.9.
+
+2. **Non-ASCII/markdown garbage filter in `_extract_deepseek_tactics`:** Added a post-processing filter that strips candidate proofs containing non-ASCII characters or Markdown fences (e.g., ` ``` `, `**`, `##`), which the model occasionally emits when it reverts to natural-language explanations.
+
+3. **Correct Lean error regex:** Lean's batch output uses the format `error: PATH:LINE:COL:` — the regex was updated to `error:.*?ProofGoals.lean:LINE:COL:` to correctly map error lines back to which candidate proof failed elaboration.
+
+---
+
+### 5.13 Summary: All Approaches Compared
+
+| Model | Benchmark | Proved |
+|-------|-----------|--------|
+| ByT5 pretrained (REPL) | 24 calculus | 0/24 (REPL bug) |
+| ByT5 analysis FT (REPL) | 24 calculus | 0/24 (REPL bug) |
+| DeepSeek-Prover-V1.5-RL 4-bit | 24 calculus | **22/24 (91.7%)** |
+| DeepSeek-Prover-V1.5-RL 4-bit | 12 basic | **12/12 (100%)** |
+
+**Note on ByT5 "REPL bug":** The 0/24 results for both ByT5 checkpoints were caused entirely by a PopenSpawn stdin race condition (§5.9), not by model quality — §5.10 confirms the analysis FT model generates correct closing tactics. A clean ByT5 re-run using batch `lake build` verification (same method as §5.12) is pending (§5.14).
 
 ---
 
