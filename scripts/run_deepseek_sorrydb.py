@@ -23,6 +23,8 @@ import sys
 import time
 from pathlib import Path
 
+import torch
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from prover import ProofSearch
 
@@ -53,6 +55,8 @@ def main():
                         default="models/pretrained/deepseek-prover-v1.5-rl")
     parser.add_argument("--max-goals", type=int, default=100,
                         help="Limit to first N goals (default 100)")
+    parser.add_argument("--skip-goals", type=int, default=0,
+                        help="Skip the first N goals (for resuming after crash)")
     parser.add_argument("--timeout", type=float, default=300.0,
                         help="Per-goal timeout in seconds (default 300)")
     parser.add_argument("--top-k", type=int, default=32)
@@ -62,6 +66,9 @@ def main():
     args = parser.parse_args()
 
     goals = load_goals(args.goals_file, args.max_goals)
+    if args.skip_goals:
+        goals = goals[args.skip_goals:]
+        logger.info("Skipping first %d goals (resuming from goal %d)", args.skip_goals, args.skip_goals + 1)
     logger.info("Loaded %d SorryDB goals from %s", len(goals), args.goals_file)
 
     prover = ProofSearch(
@@ -99,14 +106,20 @@ def main():
         logger.info("Theorem: %s", theorem[:100])
         logger.info("Repo: %s", repo)
 
-        r = prover.prove(theorem=theorem, hypotheses=hypotheses, timeout=args.timeout)
+        try:
+            r = prover.prove(theorem=theorem, hypotheses=hypotheses, timeout=args.timeout)
+            verified, proof, elapsed, nodes, error = r.verified, r.proof, r.elapsed_seconds, r.search_nodes_expanded, r.error
+        except torch.cuda.OutOfMemoryError:
+            logger.warning("OOM on goal %d — skipping", i + 1)
+            import gc; gc.collect(); torch.cuda.empty_cache()
+            verified, proof, elapsed, nodes, error = False, None, 0.0, 0, "OOM"
 
-        status = "SUCCESS" if r.verified else "FAILED"
-        logger.info("Result: %s in %.1fs (%d nodes)", status, r.elapsed_seconds, r.search_nodes_expanded)
-        if r.proof:
-            logger.info("Proof: %s", r.proof[:120])
+        status = "SUCCESS" if verified else "FAILED"
+        logger.info("Result: %s in %.1fs (%d nodes)", status, elapsed, nodes)
+        if proof:
+            logger.info("Proof: %s", proof[:120])
 
-        if r.verified:
+        if verified:
             n_success += 1
 
         results.append({
@@ -115,11 +128,11 @@ def main():
             "file_path": goal.get("file_path", ""),
             "expected_type": theorem,
             "hypotheses": hypotheses,
-            "success": r.verified,
-            "proof": r.proof,
-            "nodes_expanded": r.search_nodes_expanded,
-            "elapsed_seconds": r.elapsed_seconds,
-            "error": r.error,
+            "success": verified,
+            "proof": proof,
+            "nodes_expanded": nodes,
+            "elapsed_seconds": elapsed,
+            "error": error,
         })
         _save_checkpoint()  # write after every goal — safe if SLURM kills the job
 

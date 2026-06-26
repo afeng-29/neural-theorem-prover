@@ -441,7 +441,10 @@ class DeepSeekProverModel:
         self._ensure_loaded()
         prompt_text = self._build_prompt(theorem, hypotheses, prior_tactics)
         device = next(self._model.parameters()).device
-        inputs = self._tokenizer(prompt_text, return_tensors="pt").to(device)
+        inputs = self._tokenizer(
+            prompt_text, return_tensors="pt",
+            max_length=2048, truncation=True,  # prevent OOM on long proof states
+        ).to(device)
         prompt_len = inputs["input_ids"].shape[1]
 
         outputs = self._model.generate(
