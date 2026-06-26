@@ -33,7 +33,7 @@ python3 scripts/run_deepseek_sorrydb.py \
     --max-goals    100 \
     --skip-goals   71 \
     --timeout      300 \
-    --top-k        32 \
+    --top-k        8 \
     --load-in-4bit \
     --output       results/sorrydb_deepseek_resume.json
 
