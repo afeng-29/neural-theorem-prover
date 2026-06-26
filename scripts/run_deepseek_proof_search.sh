@@ -2,7 +2,6 @@
 #SBATCH --job-name=deepseek_ps
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
-#SBATCH --constraint=rtx6000
 #SBATCH --mem=48G
 #SBATCH --cpus-per-task=8
 #SBATCH --time=08:00:00
@@ -30,7 +29,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 from prover.tactic_model import DeepSeekProverModel
 
-m = DeepSeekProverModel('$MODEL')
+m = DeepSeekProverModel('$MODEL', load_in_4bit=True)
 theorem = 'Continuous (fun _ : ℝ => c)'
 hyps = ['c : ℝ']
 print('Theorem:', theorem)
@@ -63,15 +62,17 @@ python3 scripts/compare_proof_search.py \
     --top-k        32 \
     --model        finetuned \
     --model-type   deepseek \
+    --load-in-4bit \
     --log-tactics \
     --output       results/proof_search_deepseek.json
 
 echo ""
 echo "=== Step 2: Proof search — DeepSeek-Prover via test_pipeline.py ==="
 python3 test_pipeline.py \
-    --model-path  "$MODEL" \
-    --model-type  deepseek \
-    --timeout     300 \
-    --top-k       32
+    --model-path   "$MODEL" \
+    --model-type   deepseek \
+    --load-in-4bit \
+    --timeout      300 \
+    --top-k        32
 
 echo "=== Done ==="

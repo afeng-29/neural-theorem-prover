@@ -61,6 +61,8 @@ def main():
                         help="byt5: ByT5-small ReProver (default); "
                              "deepseek: DeepSeek-Prover-V1.5-RL (7B, needs GPU); "
                              "causal: generic causal LM")
+    parser.add_argument("--load-in-4bit", action="store_true",
+                        help="Load DeepSeek model in 4-bit quantization (fits 16GB GPU)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Skip actual Lean interaction (for smoke-testing imports)")
     parser.add_argument("--verify-only", action="store_true",
@@ -88,6 +90,7 @@ def main():
         lean_project=args.lean_project,
         top_k=args.top_k,
         model_type=args.model_type,
+        load_in_4bit=args.load_in_4bit,
     )
 
     if args.verify_only:

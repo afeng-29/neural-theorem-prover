@@ -87,19 +87,23 @@ class ProofSearch:
         device: Optional[str] = None,
         model=None,
         model_type: str = "byt5",
+        load_in_4bit: bool = False,
     ):
         """
-        model:      Pre-constructed model object (TacticModel, DeepSeekProverModel, etc.).
-                    If provided, model_path and model_type are ignored.
-        model_type: "byt5"    — ByT5-small ReProver (default)
-                    "deepseek" — DeepSeek-Prover-V1.5-RL (7B, needs GPU)
-                    "causal"   — generic CausalLM (set model_path to HF model id)
+        model:        Pre-constructed model object (TacticModel, DeepSeekProverModel, etc.).
+                      If provided, model_path and model_type are ignored.
+        model_type:   "byt5"    — ByT5-small ReProver (default)
+                      "deepseek" — DeepSeek-Prover-V1.5-RL (7B, needs GPU)
+                      "causal"   — generic CausalLM (set model_path to HF model id)
+        load_in_4bit: Load DeepSeek model in 4-bit (bitsandbytes). Reduces VRAM from
+                      ~14GB to ~3.5GB; allows running on 16GB V100.
         """
         self.top_k = top_k
         if model is not None:
             self._model = model
         elif model_type == "deepseek":
-            self._model = DeepSeekProverModel(model_id=model_path, device=device)
+            self._model = DeepSeekProverModel(model_id=model_path, device=device,
+                                               load_in_4bit=load_in_4bit)
         elif model_type == "causal":
             self._model = CausalLMTacticModel(model_id=str(model_path), device=device)
         else:
