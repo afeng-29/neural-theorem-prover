@@ -655,10 +655,11 @@ class LeanInterface:
                 logger.info("All %d candidates passed", len(items))
                 return [True] * len(items)
 
-            # Parse error/warning line numbers from Lean output.
-            # Format: ".../ProofGoals.lean:LINE:COL: error: ..."
+            # Parse error line numbers from Lean output.
+            # Lean 4 / lake format: "error: PATH/ProofGoals.lean:LINE:COL: message"
+            # (note: "error:" appears BEFORE the path, not after the line:col)
             error_lines: set[int] = set()
-            for m in _re.finditer(r"ProofGoals\.lean:(\d+):\d+:\s*error:", output):
+            for m in _re.finditer(r"error:.*?ProofGoals\.lean:(\d+):\d+:", output):
                 error_lines.add(int(m.group(1)))
 
             if not error_lines:
