@@ -320,7 +320,14 @@ def _extract_deepseek_tactics(text: str) -> list[str]:
         # Lines that are just keywords/labels ("Step-by-Step", "Proof:", etc.)
         if re.match(r"^[A-Z][A-Za-z\s-]+:?\s*$", s) and len(s.split()) <= 5:
             return True
+        # LLM meta-prompts that leaked into the output
+        if re.search(r"(complete the following|lean 4 code|fill in|your answer|solution:)", s, re.IGNORECASE):
+            return True
         return False
+
+    # Whole-proof bodies that contain `sorry` are not real proofs — reject entire proof
+    # (sorry is syntactically valid in Lean 4 and passes lake build, but is an axiom skip)
+    _SORRY_RE = re.compile(r"\bsorry\b")
 
     tactics = []
     for line in text.split("\n"):
@@ -334,6 +341,9 @@ def _extract_deepseek_tactics(text: str) -> list[str]:
         if _looks_like_prose(stripped):
             continue
         tactics.append(stripped)
+
+    if any(_SORRY_RE.search(t) for t in tactics):
+        return []  # proof uses sorry — not a real proof
     return tactics
 
 

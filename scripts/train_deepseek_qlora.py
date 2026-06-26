@@ -143,10 +143,12 @@ def main():
 
     # ── Load model in 4-bit NF4 ─────────────────────────────────────────────
     logger.info("Loading model in 4-bit NF4...")
+    # Use float32 compute on V100 — bfloat16 unavailable, fp16 causes NaN gradients
+    # in backprop through 4-bit dequantization. float32 is ~2x slower but stable.
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.float16,
+        bnb_4bit_compute_dtype=torch.float32,
         bnb_4bit_use_double_quant=True,
     )
     model = AutoModelForCausalLM.from_pretrained(
