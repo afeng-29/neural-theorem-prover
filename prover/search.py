@@ -154,7 +154,7 @@ class ProofSearch:
         matches what has been applied so far — this keeps the search coherent
         across multi-tactic proofs without requiring multiple REPL sessions.
         """
-        t_start = time.monotonic()
+        t_total_start = time.monotonic()
         _root_tactics: list[dict] = []
         nodes_expanded = 0
 
@@ -173,13 +173,17 @@ class ProofSearch:
         if not proof_scripts:
             return ProofResult(proof=None, verified=False, steps=[],
                                search_nodes_expanded=0,
-                               elapsed_seconds=time.monotonic() - t_start,
+                               elapsed_seconds=time.monotonic() - t_total_start,
                                error="DeepSeek generated no proof scripts")
 
         try:
             with self._lean.open_proof(theorem, hypotheses) as session:
+                # Reset timer AFTER REPL opens — timeout counts only tactic search,
+                # not model inference and Lean trace initialization (first theorem
+                # takes 3-5 min cold-cache; that cost is not the model's fault).
+                t_start = time.monotonic()
+
                 # Scripts that are still "alive" (prefix so far has been valid)
-                # Each entry: (script_tactics, applied_depth)
                 active_scripts: list[list[str]] = list(proof_scripts)
                 applied: list[str] = []
                 state_history: list[str] = [session.current_state_str()]
@@ -230,7 +234,7 @@ class ProofSearch:
                                 verified=True,
                                 steps=list(zip(state_history, tactic_seq)),
                                 search_nodes_expanded=nodes_expanded,
-                                elapsed_seconds=time.monotonic() - t_start,
+                                elapsed_seconds=time.monotonic() - t_total_start,
                                 root_tactics=_root_tactics,
                             )
 
@@ -252,12 +256,12 @@ class ProofSearch:
             logger.exception("Unexpected error during DeepSeek proof search")
             return ProofResult(proof=None, verified=False, steps=[],
                                search_nodes_expanded=nodes_expanded,
-                               elapsed_seconds=time.monotonic() - t_start,
+                               elapsed_seconds=time.monotonic() - t_total_start,
                                error=str(e), root_tactics=_root_tactics)
 
         return ProofResult(proof=None, verified=False, steps=[],
                            search_nodes_expanded=nodes_expanded,
-                           elapsed_seconds=time.monotonic() - t_start,
+                           elapsed_seconds=time.monotonic() - t_total_start,
                            root_tactics=_root_tactics)
 
     def _prove_best_first(

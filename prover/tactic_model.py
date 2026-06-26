@@ -279,6 +279,30 @@ def _extract_deepseek_tactics(text: str) -> list[str]:
 
     _STOP_PREFIXES = ("import ", "theorem ", "lemma ", "def ", "open ",
                       "#check", "#eval", "```", "--", "/-", "example")
+    # English prose indicators: 4-bit quantization sometimes drops newlines,
+    # causing the model's English explanation to concatenate with the tactic.
+    # Reject lines that look like English sentences rather than Lean tactics.
+    _PROSE_WORDS = frozenset([
+        "the", "is", "are", "was", "were", "can", "that", "this", "we", "for",
+        "to", "of", "in", "on", "it", "its", "be", "by", "an", "or", "if",
+        "use", "uses", "used", "since", "which", "as", "shows", "means",
+        "prove", "proof", "function", "tactic", "automatically", "given",
+        "here", "where", "how", "what",
+    ])
+
+    def _looks_like_prose(s: str) -> bool:
+        if len(s) > 150:
+            return True
+        if "\\(" in s or "\\[" in s:  # LaTeX math
+            return True
+        words = s.split()
+        if len(words) >= 4:
+            lowercase_words = [w.rstrip(".,;:") for w in words if w[0:1].islower()]
+            prose_count = sum(1 for w in lowercase_words if w in _PROSE_WORDS)
+            if prose_count >= 2:
+                return True
+        return False
+
     tactics = []
     for line in text.split("\n"):
         stripped = line.strip()
@@ -286,6 +310,8 @@ def _extract_deepseek_tactics(text: str) -> list[str]:
             continue
         if any(stripped.startswith(p) for p in _STOP_PREFIXES):
             break
+        if _looks_like_prose(stripped):
+            continue
         tactics.append(stripped)
     return tactics
 
