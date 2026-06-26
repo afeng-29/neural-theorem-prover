@@ -193,7 +193,7 @@ class ProofSearch:
             batch_items.append((theorem, hypotheses, script, f"ds_{i}_{h}"))
 
         _root_tactics: list[dict] = [
-            {"tactic": "\n".join(s), "log_prob": -float(i)}
+            {"tactic": "\n".join(s), "log_prob": -float(i), "elaboration": "unknown"}
             for i, s in enumerate(unique_scripts[:5])
         ]
 
@@ -207,6 +207,10 @@ class ProofSearch:
                                error=str(e), root_tactics=_root_tactics)
 
         for ok, (_, _, script, _) in zip(results, batch_items):
+            # Update elaboration for root_tactics entries that correspond to this script
+            for rt in _root_tactics:
+                if rt["tactic"] == "\n".join(script):
+                    rt["elaboration"] = "complete" if ok else "error"
             if ok:
                 proof_str = "\n".join(script)
                 logger.info("DeepSeek proved '%s...' with: %s", theorem[:40], script)

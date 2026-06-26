@@ -662,8 +662,14 @@ class LeanInterface:
                 error_lines.add(int(m.group(1)))
 
             if not error_lines:
-                # Could not parse line numbers — treat all as failed.
-                logger.debug("verify_proofs_parallel: build failed but no error lines parsed")
+                # Could not parse line numbers — log first 800 chars to help diagnose.
+                import sys as _sys
+                print(
+                    f"[verify_proofs_parallel] lake build failed (rc={result.returncode}) "
+                    f"but no error lines parsed.\nOutput snippet:\n"
+                    + (output[:800] if output else "(empty)"),
+                    file=_sys.stderr, flush=True,
+                )
                 return [False] * len(items)
 
             results = []

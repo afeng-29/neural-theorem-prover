@@ -303,6 +303,25 @@ def _extract_deepseek_tactics(text: str) -> list[str]:
                 return True
         return False
 
+    def _is_garbage_line(s: str) -> bool:
+        """True if this line should be DROPPED — it's model hallucination, not Lean."""
+        # Non-ASCII characters: always garbage from the 4-bit model
+        if any(ord(c) > 127 for c in s):
+            return True
+        # Markdown-style headers/bullets (### Explanation, * item, - item, 1. step)
+        if re.match(r"^[#\*\-]", s):
+            return True
+        # Numbered list items: "1. Something" or "1) Something"
+        if re.match(r"^\d+[.)]\s", s):
+            return True
+        # Separator lines: ===, ---, all punctuation
+        if re.match(r"^[=\-_]{3,}$", s):
+            return True
+        # Lines that are just keywords/labels ("Step-by-Step", "Proof:", etc.)
+        if re.match(r"^[A-Z][A-Za-z\s-]+:?\s*$", s) and len(s.split()) <= 5:
+            return True
+        return False
+
     tactics = []
     for line in text.split("\n"):
         stripped = line.strip()
@@ -310,6 +329,8 @@ def _extract_deepseek_tactics(text: str) -> list[str]:
             continue
         if any(stripped.startswith(p) for p in _STOP_PREFIXES):
             break
+        if _is_garbage_line(stripped):
+            continue
         if _looks_like_prose(stripped):
             continue
         tactics.append(stripped)
