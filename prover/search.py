@@ -89,6 +89,7 @@ class ProofSearch:
         model_type: str = "byt5",
         load_in_4bit: bool = False,
         use_subprocess: bool = False,
+        lora_adapter: str | None = None,
     ):
         """
         model:          Pre-constructed model object (TacticModel, DeepSeekProverModel, etc.).
@@ -101,6 +102,8 @@ class ProofSearch:
         use_subprocess: For non-DeepSeek models (ByT5/causal): skip the interactive REPL
                         and instead try each top-k tactic as a single-step subprocess
                         proof. Valid clean numbers without needing a working REPL.
+        lora_adapter:   Path to a saved PEFT LoRA adapter directory (deepseek only).
+                        Loaded on top of the 4-bit base model for QLoRA evaluation.
         """
         self.top_k = top_k
         self._use_subprocess = use_subprocess
@@ -108,7 +111,8 @@ class ProofSearch:
             self._model = model
         elif model_type == "deepseek":
             self._model = DeepSeekProverModel(model_id=model_path, device=device,
-                                               load_in_4bit=load_in_4bit)
+                                               load_in_4bit=load_in_4bit,
+                                               lora_adapter=lora_adapter)
         elif model_type == "causal":
             self._model = CausalLMTacticModel(model_id=str(model_path), device=device)
         else:

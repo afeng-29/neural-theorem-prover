@@ -357,10 +357,12 @@ class DeepSeekProverModel:
         model_id: str | None = None,
         device: Optional[str] = None,
         load_in_4bit: bool = False,
+        lora_adapter: str | None = None,
     ):
         self.model_id = model_id or self.DEFAULT_MODEL_ID
         self.device = device or TacticModel._best_device()
         self.load_in_4bit = load_in_4bit
+        self.lora_adapter = lora_adapter  # path to saved PEFT LoRA adapter dir
         self._model = None
         self._tokenizer = None
 
@@ -381,6 +383,12 @@ class DeepSeekProverModel:
             kwargs["dtype"] = torch.float16  # V100 supports fp16; bfloat16 needs Ampere+
 
         self._model = AutoModelForCausalLM.from_pretrained(self.model_id, **kwargs)
+
+        if self.lora_adapter:
+            from peft import PeftModel
+            logger.info("Loading LoRA adapter from %s", self.lora_adapter)
+            self._model = PeftModel.from_pretrained(self._model, self.lora_adapter)
+
         self._model.eval()
         n = sum(p.numel() for p in self._model.parameters())
         logger.info("DeepSeek-Prover loaded (%.1fB parameters)", n / 1e9)
