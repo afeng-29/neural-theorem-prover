@@ -75,6 +75,18 @@ def main():
     Path("results").mkdir(exist_ok=True)
     results = []
     n_success = 0
+    checkpoint_path = Path(args.output).with_suffix(".checkpoint.json")
+
+    def _save_checkpoint():
+        n = len(results)
+        cp = {
+            "model": args.model_path, "goals_file": args.goals_file,
+            "n_goals_attempted": n, "timeout": args.timeout, "top_k": args.top_k,
+            "summary": {"success": n_success, "total": n,
+                        "success_rate": n_success / max(n, 1)},
+            "results": results,
+        }
+        checkpoint_path.write_text(json.dumps(cp, indent=2), encoding="utf-8")
 
     for i, goal in enumerate(goals):
         goal_id = goal.get("id", f"goal_{i:05d}")
@@ -109,6 +121,7 @@ def main():
             "elapsed_seconds": r.elapsed_seconds,
             "error": r.error,
         })
+        _save_checkpoint()  # write after every goal — safe if SLURM kills the job
 
     n = len(results)
     logger.info("=" * 60)

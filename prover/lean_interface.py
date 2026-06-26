@@ -647,7 +647,7 @@ class LeanInterface:
             result = subprocess.run(
                 ["lake", "build", "TheoremProver"],
                 cwd=self.lean_project_path,
-                capture_output=True, text=True, timeout=2400, env=env,
+                capture_output=True, text=True, timeout=600, env=env,
             )
             output = result.stdout + result.stderr
 
@@ -743,7 +743,7 @@ class LeanInterface:
             result = subprocess.run(
                 ["lake", "build", "TheoremProver"],
                 cwd=self.lean_project_path,
-                capture_output=True, text=True, timeout=2400, env=env,
+                capture_output=True, text=True, timeout=600, env=env,
             )
             combined_out = result.stdout + result.stderr
             if result.returncode == 0 and "error:" not in combined_out.lower():
