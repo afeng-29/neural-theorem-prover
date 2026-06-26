@@ -2,6 +2,7 @@
 #SBATCH --job-name=deepseek_ps
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
+#SBATCH --constraint=rtx6000|a100
 #SBATCH --mem=48G
 #SBATCH --cpus-per-task=8
 #SBATCH --time=08:00:00
