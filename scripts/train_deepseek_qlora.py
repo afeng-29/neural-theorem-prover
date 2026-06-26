@@ -155,9 +155,17 @@ def main():
         args.model_path,
         quantization_config=bnb_config,
         device_map="auto",
+        torch_dtype=torch.float32,  # non-quantized layers (LayerNorm, embeddings) in float32
         trust_remote_code=True,
     )
-    model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
+    # use_reentrant=False avoids bitsandbytes/gradient-checkpointing incompatibility that
+    # causes NaN gradients. use_reentrant=True (default) reruns the forward pass during
+    # backward, and bitsandbytes custom CUDA ops are not safe to rerun this way.
+    model = prepare_model_for_kbit_training(
+        model,
+        use_gradient_checkpointing=True,
+        gradient_checkpointing_kwargs={"use_reentrant": False},
+    )
 
     # ── Apply LoRA ───────────────────────────────────────────────────────────
     # Target all linear projection layers for maximum domain adaptation
@@ -216,8 +224,9 @@ def main():
             batch = {k: v.to(device) for k, v in batch.items()}
             outputs = model(**batch)
             loss = outputs.loss / args.grad_accum
+            raw_loss = loss.item() * args.grad_accum  # record BEFORE backward
             loss.backward()
-            train_loss += loss.item() * args.grad_accum
+            train_loss += raw_loss
 
             if (step + 1) % args.grad_accum == 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
