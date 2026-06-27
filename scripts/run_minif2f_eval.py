@@ -439,7 +439,7 @@ def _load_model(args):
 
     else:  # byt5
         from prover.tactic_model import TacticModel
-        model = TacticModel(model_id=args.model_path)
+        model = TacticModel(model_path=args.model_path)
         model._ensure_loaded()
         return model
 
