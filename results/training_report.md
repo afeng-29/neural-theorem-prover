@@ -783,6 +783,71 @@ python training/finetune.py --eval-only \
 
 ---
 
+---
+
+### 5.19 miniF2F Benchmark — Standard Competition Math Evaluation
+
+**Date:** 2026-06-26  
+**Dataset:** `cat-searcher/minif2f-lean4` — 244 test + 244 validation problems from AMC/AIME/IMO competitions formalized in Lean 4. This is the standard benchmark for neural theorem proving; all published systems report miniF2F numbers for direct comparison.
+
+Each problem provides:
+- `formal_statement`: complete Lean 4 theorem declaration ending with `:= sorry`
+- `header`: standard imports (`import Mathlib.XXX`) + `open BigOperators Real Nat Topology`
+- `informal_stmt`, `informal_proof`: human-readable statement and proof sketch
+
+Example problem (`mathd_algebra_478` — cone volume):
+```lean
+theorem mathd_algebra_478
+  (b h v : ℝ)
+  (h₀ : 0 < b ∧ 0 < h ∧ 0 < v)
+  (h₁ : v = 1 / 3 * (b * h))
+  (h₂ : b = 30)
+  (h₃ : h = 13 / 2) :
+  v = 65 := sorry
+```
+
+**Experiment setup:**
+
+| Item | Detail |
+|------|--------|
+| Eval script | `scripts/run_minif2f_eval.py` |
+| Verification | Subprocess `lake build` (same method as 24-theorem benchmark, no REPL) |
+| Checkpoint saving | After every problem (resume-capable) |
+| Lean 4 header | `import Mathlib; set_option maxHeartbeats 400000; open BigOperators Real Nat Topology Finset` |
+
+**Models evaluated:**
+
+| Job ID | Model | Method | top_k | Timeout | Wall time |
+|--------|-------|--------|-------|---------|-----------|
+| 51127268 | DeepSeek-Prover-V1.5-RL (4-bit) | Whole-proof generation | 8 | 300s | 8h |
+| 51127269 | ByT5-small pretrained | 1-step tactic + fallbacks | 32 | 120s | 4h |
+| 51127271 | ByT5-small analysis FT | 1-step tactic + fallbacks | 32 | 120s | 4h |
+| 51127273 | ByT5-small full-Mathlib FT | 1-step tactic + fallbacks | 32 | 120s | 4h (after training) |
+
+Note: ByT5 is limited to 1-step proofs (no multi-step search without REPL). Many miniF2F problems require multiple tactics, so ByT5 performance will be substantially lower than DeepSeek's whole-proof generation. ByT5 tries 32 model-generated tactics + 14 universal fallbacks (`norm_num`, `omega`, `ring`, `decide`, `simp`, `linarith`, etc.) per problem.
+
+**Results (SLURM jobs submitted 2026-06-26, running):**
+
+| Model | miniF2F-test pass@1 | SLURM job | Status |
+|-------|--------------------|-----------| -------|
+| ByT5 pretrained | — | 51127269 | Running |
+| ByT5 analysis FT | — | 51127271 | Running |
+| ByT5 full Mathlib FT | — | 51127273 | Pending (train first) |
+| DeepSeek zero-shot | — | 51127268 | Running |
+| DeepSeek + QLoRA | — | TBD | After 51124094 |
+| **Published: ReProver** | **~26.5%** | — | Literature |
+| **Published: DeepSeek-Prover-V1.5-RL** | **~60.2%** | — | Literature |
+
+**Full Mathlib training (Job 51127273):**  
+Fine-tunes ByT5-small on all ~250K Mathlib tactic examples (warm start from analysis FT checkpoint), then evaluates on miniF2F. Expected ~18–22h training + 1h eval.
+
+Results will be filled in as jobs complete. Output files:
+- `results/minif2f_deepseek_test.json`
+- `results/minif2f_byt5_pretrained_test.json`
+- `results/minif2f_byt5_ft_test.json`
+
+---
+
 ## 11. Lessons and Recommendations
 
 1. **Always disable fp16 on V100 + ByT5.** Byte-level embeddings produce large activation norms that consistently overflow fp16. Use bf16 if the cluster supports it (A100/H100), otherwise fp32.
