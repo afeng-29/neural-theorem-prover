@@ -554,23 +554,27 @@ Initial training produced `NaN` loss at every step. Root cause: 192/6,734 (2.9%)
 **Best checkpoint:** `models/finetuned/deepseek-qlora-calculus/best/`  
 Contains `adapter_model.safetensors` + `adapter_config.json` (LoRA weights only, ~300 MB).
 
-**QLoRA eval results (§5.17):** Pending (SLURM job 51124094 submitted).
+**QLoRA eval results:** See §5.17.
 
 ---
 
 ### 5.17 QLoRA Evaluation: DeepSeek Base vs. Fine-Tuned
 
 **Date:** 2026-06-26  
-**SLURM job:** 51124094 (submitted, queued)
+**SLURM job:** 51124094 (completed)
 
-Comparing base DeepSeek-Prover-V1.5-RL vs. QLoRA adapter (epoch-1 best, val_loss=0.8625) on the 24 calculus theorems.
+Comparing base DeepSeek-Prover-V1.5-RL vs. QLoRA adapter (epoch-1 best, val_loss=0.8625) on the 24 calculus theorems. Results in `results/deepseek_qlora_comparison.json`.
 
 | Metric | DeepSeek base | DeepSeek + QLoRA |
 |--------|--------------|-----------------|
 | Theorems attempted | 24 | 24 |
-| Proved | 22/24 (91.7%) | **Pending** |
+| **Proved** | **23/24 (95.8%)** | **11/24 (45.8%)** |
 
-Results will be saved to `results/deepseek_qlora_comparison.json`.
+**The QLoRA adapter significantly degraded whole-proof generation performance** (−50 pp). The adapter passed 3 theorems the base model failed (`continuousAt_const`, `differentiable_comp`, `differentiable_id` on this run) but failed 15 theorems the base model solved, including the entire HasDerivAt group (9 theorems) and all 3 Tendsto theorems.
+
+**Root cause analysis:** QLoRA training used (proof_state → next_tactic) sequential pairs, optimizing for tactic-level prediction. However, DeepSeek-Prover is evaluated via whole-proof generation — the model is prompted with a complete Lean 4 file stub and generates the full proof body in one shot. The LoRA weights, applied to all linear projection layers, shifted the model's output distribution toward generating single short tactics rather than multi-line proof blocks. Even at epoch 1 (lowest val_loss=0.8625, before clear overfitting), the mismatch between the training objective (next-tactic) and inference objective (whole-proof) is fundamental.
+
+**Lesson:** To fine-tune DeepSeek-Prover effectively, training data should be (Lean 4 file stub → complete proof body) pairs matching the whole-proof generation format. The tactic-level (proof_state → tactic) format used here is appropriate for ByT5 (seq2seq, tactic-by-tactic) but not for DeepSeek (causal LM, whole-proof generation).
 
 ---
 
@@ -586,14 +590,14 @@ Results will be saved to `results/deepseek_qlora_comparison.json`.
 | **ByT5 analysis FT (subprocess)** | Whole-proof lake build | 24 calculus | **24/24 (100%)** |
 | DeepSeek-Prover-V1.5-RL 4-bit | Whole-proof lake build | 12 basic | **12/12 (100%)** |
 | DeepSeek-Prover-V1.5-RL 4-bit | Whole-proof lake build | 100 SorryDB | **1/100 (1.0%)** |
-| DeepSeek + QLoRA (epoch 1) | Whole-proof lake build | 24 calculus | **Pending** |
+| DeepSeek + QLoRA (epoch 1) | Whole-proof lake build | 24 calculus | **11/24 (45.8%)** |
 
 **Key takeaways:**
 - The REPL PopenSpawn bug was the sole cause of the early 0/24 results for both ByT5 models.
 - After fixing verification, ByT5 analysis FT achieves 100% on the 24 calculus benchmark — outperforming DeepSeek zero-shot by 2 theorems.
 - DeepSeek zero-shot performance (22/24 calculus, 12/12 basic) demonstrates strong general-purpose theorem proving without domain fine-tuning.
 - SorryDB (real-world sorry goals) is dramatically harder than synthetic benchmarks: 1% success vs 91–100% on curated theorems. The gap reflects the difficulty of goals extracted from active mathematical development (non-standard imports, multi-step reasoning, out-of-distribution notation).
-- QLoRA training successfully resolved NaN loss (overfitting after epoch 1 is expected at 6,734 examples). Whether it improves on 22/24 is pending.
+- QLoRA tactic-level fine-tuning **hurt** whole-proof generation by −50 pp (45.8% vs 95.8% base). Training objective mismatch: QLoRA learned (proof_state → tactic) but DeepSeek is evaluated via whole-proof generation. Fine-tuning a whole-proof model requires (file_stub → complete_proof) training pairs, not tactic-level supervision.
 
 ---
 
