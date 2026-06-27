@@ -830,31 +830,25 @@ theorem mathd_algebra_478
 
 Note: ByT5 is limited to 1-step proofs (no multi-step search without REPL). ByT5 tries 32 model-generated tactics + 14 universal fallbacks (`norm_num`, `omega`, `ring`, `decide`, `simp`, `linarith`, `aesop`, etc.) per problem. The high pass rates below are driven primarily by these fallback tactics, which together cover the bulk of the miniF2F-lean4 test set.
 
-**Results:**
+**RETRACTED — verification bug discovered:** Previous results (98.8%, 99.6%) were false positives caused by a bug in `_build_lean_file` (commit `ae88fa3`). The multi-line `formal_body` was appended as one list item but expanded to K lines in the output file, making every even-indexed proof candidate's error fall outside the tracked line range. This caused ~50% of all candidates (always including index 0) to be falsely marked as "proved". All three miniF2F result files deleted; jobs resubmitted with fix.
+
+**Results (rerun with fix, 2026-06-27):**
 
 | Model | miniF2F-test pass@1 | SLURM job | Status |
 |-------|--------------------|-----------| -------|
-| ByT5 pretrained | **241/244 (98.8%)** | 51148624 | **Complete** |
-| ByT5 analysis FT | **243/244 (99.6%)** | 51148625 | **Complete** |
-| DeepSeek zero-shot | **~228/230 (99.1%)** at 230/244 | 51127268 | Running (235/244) |
-| ByT5 full Mathlib FT | — | 51127273 | Resubmitted (training) |
+| ByT5 pretrained | — | 51169438 | Running |
+| ByT5 analysis FT | — | 51169439 | Running |
+| DeepSeek zero-shot | — | 51169440 | Running |
+| ByT5 full Mathlib FT | — | 51127273 | Training (job 51168198) |
 | **Published: ReProver** | **~26.5%** | — | Literature |
 | **Published: DeepSeek-Prover-V1.5-RL** | **~60.2%** | — | Literature |
 
-**Failed problems (ByT5):**
-- `mathd_algebra_478` (cone volume with real arithmetic): both pretrained and FT failed — `norm_num` can't close this (requires `field_simp` + numeric computation for `v = 65`).
-- `numbertheory_4x3m7y3neq2003` (Diophantine inequality): failed by pretrained, solved by FT.
-- `imosl_2007_algebra_p6` (IMO Shortlist 2007 A6): failed by both — a genuinely hard IMO problem requiring multi-step algebraic manipulation.
-
-**Interpretation of high pass rates:** The `cat-searcher/minif2f-lean4` test set is largely solvable by standard Mathlib4 automation (`norm_num`, `omega`, `ring`, `decide`, `simp`, `linarith`). Unlike the original miniF2F benchmark versions used in ReProver/DeepSeek-RL papers (which required multi-step REPL search), the Lean4 formalizations in this HuggingFace dataset have been structured so that Lean's powerful proof automation closes most goals in one step. This explains our 98–99% results vs. the 26–60% in literature — different evaluation protocol, not necessarily better models.
-
-**Full Mathlib training (Job 51127273, resubmitted):**  
-Previous run failed with `--resume` flag on empty output dir. Fixed by removing `--resume`. Resubmitted; this job trains ByT5-small on all ~250K Mathlib tactic examples, warm-starting from the analysis FT checkpoint. Expected ~18–22h training.
+Results will be filled in once jobs complete.
 
 Output files:
 - `results/minif2f_deepseek_test.json` (pending)
-- `results/minif2f_byt5_pretrained_test.json` ✓
-- `results/minif2f_byt5_ft_test.json` ✓
+- `results/minif2f_byt5_pretrained_test.json` (pending)
+- `results/minif2f_byt5_ft_test.json` (pending)
 
 ---
 
