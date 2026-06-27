@@ -72,7 +72,9 @@ def _build_lean_file(problems: list[dict]) -> tuple[str, list[tuple[int, int]]]:
     ranges: list[tuple[int, int]] = []
     for p in problems:
         start = len(lines) + 1  # 1-indexed
-        lines.append(f"theorem {p['thm_name']} {p['formal_body']} := by")
+        thm_header = f"theorem {p['thm_name']} {p['formal_body']} := by"
+        for hline in thm_header.splitlines():
+            lines.append(hline)
         for tline in p["proof_body"].splitlines():
             lines.append("  " + tline.lstrip())
         end = len(lines)
