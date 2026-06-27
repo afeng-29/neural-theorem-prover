@@ -50,8 +50,7 @@ python3 training/finetune.py \
     --epochs        5 \
     --batch-size    4 \
     --grad-accum    4 \
-    --max-input-length 512 \
-    --resume
+    --max-input-length 512
 
 echo ""
 echo "=== Done. Model at models/finetuned/mathlib_all/ ==="
