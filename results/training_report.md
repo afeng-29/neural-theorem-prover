@@ -448,7 +448,152 @@ Three bugs were fixed between the §5.11 failure and this run:
 | DeepSeek-Prover-V1.5-RL 4-bit | 24 calculus | **22/24 (91.7%)** |
 | DeepSeek-Prover-V1.5-RL 4-bit | 12 basic | **12/12 (100%)** |
 
-**Note on ByT5 "REPL bug":** The 0/24 results for both ByT5 checkpoints were caused entirely by a PopenSpawn stdin race condition (§5.9), not by model quality — §5.10 confirms the analysis FT model generates correct closing tactics. A clean ByT5 re-run using batch `lake build` verification (same method as §5.12) is pending (§5.14).
+**Note on ByT5 "REPL bug":** The 0/24 results for both ByT5 checkpoints were caused entirely by a PopenSpawn stdin race condition (§5.9), not by model quality — §5.10 confirms the analysis FT model generates correct closing tactics. A clean ByT5 re-run using batch `lake build` verification (same method as §5.12) is reported in §5.14.
+
+---
+
+### 5.14 ByT5 Clean Re-run: Subprocess Verification (No REPL)
+
+**Date:** 2026-06-26  
+**SLURM job:** 51084956  
+**Change:** Switched ByT5 from interactive REPL (`Dojo`) to subprocess whole-proof verification (`verify_proofs_parallel`), eliminating the PopenSpawn false-positive crash (§5.9/§7.6). Each proof candidate is written to `ProofGoals.lean` and verified via a single `lake build` call.
+
+**Results on 24 calculus theorems:**
+
+| Metric | Pretrained (ByT5) | Fine-Tuned (ByT5 Analysis) |
+|--------|------------------|---------------------------|
+| Theorems attempted | 24 | 24 |
+| **Proved** | **22/24 (91.7%)** | **24/24 (100%)** |
+| Failed | 2 | 0 |
+
+The analysis fine-tuned ByT5 model achieves **100% on the 24 calculus benchmark** once the REPL bug is eliminated. The 2 failures of the pretrained model (`differentiable_comp` and one other) are closed by the fine-tuned model's domain-specific tactic knowledge.
+
+**Comparison with DeepSeek (§5.12):**
+
+| Model | 24 calculus theorems |
+|-------|---------------------|
+| ByT5 pretrained (subprocess) | 22/24 (91.7%) |
+| ByT5 analysis FT (subprocess) | **24/24 (100%)** |
+| DeepSeek-Prover-V1.5-RL 4-bit | 22/24 (91.7%) |
+
+The fine-tuned ByT5 slightly outperforms DeepSeek zero-shot on this benchmark — though DeepSeek operates without any domain-specific fine-tuning.
+
+---
+
+### 5.15 SorryDB Evaluation — DeepSeek-Prover-V1.5-RL
+
+**Date:** 2026-06-26  
+**SLURM jobs:** 51090644 (goals 1–71), 51117423 (goals 72–100)  
+**Dataset:** `data/sorrydb_calculus.jsonl` — 100 real `sorry` goals sampled from external Lean 4 repositories via [SorryDB](https://github.com/austinletson/sorrydb). These are genuine unsolved proof obligations, not synthetic benchmarks.
+
+**Configuration:** DeepSeek-Prover-V1.5-RL 4-bit NF4, `top_k=8` (final run), 300s timeout per goal, `verify_proofs_parallel` for batch verification.
+
+**Results:**
+
+| Run | Goals | Proved | Success Rate |
+|-----|-------|--------|-------------|
+| Run 1 (goals 1–71) | 71 | 1 | 1.4% |
+| Run 2 (goals 72–100) | 29 | 0 | 0.0% |
+| **Total** | **100** | **1** | **1.0%** |
+
+**The one proved goal:**
+> `P[stoppedValue X τ|hσ.measurableSpace] ≤ᶠ[ae P] stoppedValue X (τ ⊓ σ)`  
+> Martingale stopping time inequality from `Mathlib.Probability.MartingaleStoppingTime`. Proof found: 6-step sequence of martingale lemma applications.
+
+**Analysis of failures:**
+
+Goals 72–100 were all from `Lean-QuantumInfo` (quantum information theory: matrix logarithms, operator norms, von Neumann entropy, quantum channels). These involve notation and lemmas (`eLpNorm`, `E3`, `statePow`, `ℰ`) that are entirely outside DeepSeek's training distribution and are not in Mathlib. 0/29 expected.
+
+Goals 1–71 spanned brownian motion, stochastic processes, martingale theory, and classical analysis. Only 1/71 was proved, indicating that even in domains closer to the training distribution, real-world `sorry` goals are substantially harder than synthetic benchmarks — they require multi-lemma reasoning over non-standard library imports.
+
+**Engineering challenges fixed during this evaluation:**
+1. **Lake build timeout (600s):** Goal 58 (brownian motion, infinite sup) caused lake build to hang for 33+ min. Fixed by reducing subprocess timeout from 2400s → 600s.
+2. **`sorry` false positive:** DeepSeek sometimes generates `sorry` as a tactic, which Lean 4 accepts as an axiom skip. Added regex filter to reject any proof containing `\bsorry\b`.
+3. **LLM meta-prompt leak:** `"Complete the following Lean 4 code:"` appeared as a generated tactic. Added `_is_garbage_line` filter for English instruction phrases.
+4. **OOM on long proof states:** Goal 71 crashed with `torch.OutOfMemoryError: Tried to allocate 17.23 GiB`. Fixed by (a) truncating tokenizer input to 2048 tokens, (b) per-goal OOM catch with GPU cache clear, (c) batched generation (8 sequences at a time, adaptive halving) instead of 32 simultaneous sequences.
+
+---
+
+### 5.16 QLoRA Fine-Tuning: DeepSeek-Prover-V1.5-RL on Calculus Data
+
+**Date:** 2026-06-26  
+**SLURM job:** 51094248 (24h wall time, gpu partition, midway3-0283)  
+**Motivation:** DeepSeek-Prover achieves 22/24 zero-shot but fails 2 theorems. QLoRA fine-tuning on the Mathlib calculus tactic dataset may close these gaps and improve success rate on domain-specific goals.
+
+**Method:**
+
+| Item | Detail |
+|------|--------|
+| Base model | `deepseek-ai/DeepSeek-Prover-V1.5-RL` (7B) |
+| Quantization | 4-bit NF4 (bitsandbytes) |
+| LoRA rank / alpha | 16 / 32 |
+| LoRA target modules | All linear projection layers (`q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj`) |
+| Training data | 6,734 `(proof_state, tactic)` pairs from Mathlib calculus files |
+| Format | `"-- State:\n{state}\n-- Tactic:\n{tactic}\n"` |
+| Max sequence length | 512 tokens |
+| Epochs | 3 |
+| Learning rate | 2e-4 (cosine decay) |
+| Gradient accumulation | 8 steps (effective batch = 8) |
+| Compute dtype | float32 |
+| Gradient checkpointing | Enabled (`use_reentrant=False`) |
+
+**Training results:**
+
+| Epoch | Train loss | Val loss | Best? |
+|-------|-----------|----------|-------|
+| 1 | 1.298 | **0.8625** | ✓ saved to `best/` |
+| 2 | 0.578 | 1.025 | ✗ |
+| 3 | ~0.234 (running) | — | likely worse |
+
+The model learns rapidly in epoch 1, then **overfits** in epochs 2–3 (val loss rises while train loss falls). The epoch-1 checkpoint is the best model.
+
+**Key training bug fixed (commit acd2e70 — NaN loss):**
+
+Initial training produced `NaN` loss at every step. Root cause: 192/6,734 (2.9%) training examples had proof states so long that they filled the entire 512-token context window, leaving no room for the tactic. All labels were masked to `-100`, giving cross-entropy over an all-masked sequence (mathematically undefined = NaN). Fix: tokenize the tactic first to get `n_comp` tokens, then truncate the prompt to `(512 - n_comp)` tokens so the tactic is always present. Verified 0/6,734 all-masked examples after fix.
+
+**Best checkpoint:** `models/finetuned/deepseek-qlora-calculus/best/`  
+Contains `adapter_model.safetensors` + `adapter_config.json` (LoRA weights only, ~300 MB).
+
+**QLoRA eval results (§5.17):** Pending (SLURM job 51124094 submitted).
+
+---
+
+### 5.17 QLoRA Evaluation: DeepSeek Base vs. Fine-Tuned
+
+**Date:** 2026-06-26  
+**SLURM job:** 51124094 (submitted, queued)
+
+Comparing base DeepSeek-Prover-V1.5-RL vs. QLoRA adapter (epoch-1 best, val_loss=0.8625) on the 24 calculus theorems.
+
+| Metric | DeepSeek base | DeepSeek + QLoRA |
+|--------|--------------|-----------------|
+| Theorems attempted | 24 | 24 |
+| Proved | 22/24 (91.7%) | **Pending** |
+
+Results will be saved to `results/deepseek_qlora_comparison.json`.
+
+---
+
+### 5.18 Updated Summary: All Approaches Compared
+
+| Model | Method | Benchmark | Proved |
+|-------|--------|-----------|--------|
+| ByT5 pretrained (REPL) | Interactive REPL (buggy) | 24 calculus | 0/24 |
+| ByT5 analysis FT (REPL) | Interactive REPL (buggy) | 24 calculus | 0/24 |
+| DeepSeek-Prover-V1.5-RL 4-bit | Whole-proof, bad prompt | 24 calculus | 0/24 |
+| ByT5 pretrained (subprocess) | Whole-proof lake build | 24 calculus | **22/24 (91.7%)** |
+| DeepSeek-Prover-V1.5-RL 4-bit | Whole-proof lake build | 24 calculus | **22/24 (91.7%)** |
+| **ByT5 analysis FT (subprocess)** | Whole-proof lake build | 24 calculus | **24/24 (100%)** |
+| DeepSeek-Prover-V1.5-RL 4-bit | Whole-proof lake build | 12 basic | **12/12 (100%)** |
+| DeepSeek-Prover-V1.5-RL 4-bit | Whole-proof lake build | 100 SorryDB | **1/100 (1.0%)** |
+| DeepSeek + QLoRA (epoch 1) | Whole-proof lake build | 24 calculus | **Pending** |
+
+**Key takeaways:**
+- The REPL PopenSpawn bug was the sole cause of the early 0/24 results for both ByT5 models.
+- After fixing verification, ByT5 analysis FT achieves 100% on the 24 calculus benchmark — outperforming DeepSeek zero-shot by 2 theorems.
+- DeepSeek zero-shot performance (22/24 calculus, 12/12 basic) demonstrates strong general-purpose theorem proving without domain fine-tuning.
+- SorryDB (real-world sorry goals) is dramatically harder than synthetic benchmarks: 1% success vs 91–100% on curated theorems. The gap reflects the difficulty of goals extracted from active mathematical development (non-standard imports, multi-step reasoning, out-of-distribution notation).
+- QLoRA training successfully resolved NaN loss (overfitting after epoch 1 is expected at 6,734 examples). Whether it improves on 22/24 is pending.
 
 ---
 
@@ -474,6 +619,12 @@ models/finetuned/analysis/                            # analysis FT (epoch 8 bes
 ├── val_metrics.json           # 14.06% val exact_match (epoch 8)
 ├── test_metrics.json          # 12.95% top-1, 18.23% top-10 (n=587)
 └── checkpoint-{2045,...}      # epoch checkpoints 1–10
+models/finetuned/deepseek-qlora-calculus/             # DeepSeek QLoRA (epoch 1 best)
+├── best/                      # best checkpoint (val_loss=0.8625, epoch 1)
+│   ├── adapter_model.safetensors   # LoRA weights only (~300 MB)
+│   ├── adapter_config.json         # LoRA r=16/alpha=32 config
+│   └── tokenizer_config.json
+└── epoch-{1,2,3}/             # per-epoch checkpoints
 ```
 
 ---
