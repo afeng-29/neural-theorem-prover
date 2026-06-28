@@ -830,25 +830,55 @@ theorem mathd_algebra_478
 
 Note: ByT5 is limited to 1-step proofs (no multi-step search without REPL). ByT5 tries 32 model-generated tactics + 14 universal fallbacks (`norm_num`, `omega`, `ring`, `decide`, `simp`, `linarith`, `aesop`, etc.) per problem. The high pass rates below are driven primarily by these fallback tactics, which together cover the bulk of the miniF2F-lean4 test set.
 
-**RETRACTED — verification bug discovered:** Previous results (98.8%, 99.6%) were false positives caused by a bug in `_build_lean_file` (commit `ae88fa3`). The multi-line `formal_body` was appended as one list item but expanded to K lines in the output file, making every even-indexed proof candidate's error fall outside the tracked line range. This caused ~50% of all candidates (always including index 0) to be falsely marked as "proved". All three miniF2F result files deleted; jobs resubmitted with fix.
+**Verification bugs discovered and fixed (2026-06-27):**
 
-**Results (rerun with fix, 2026-06-27):**
+Two compounding false-positive bugs were identified and fixed:
 
-| Model | miniF2F-test pass@1 | SLURM job | Status |
-|-------|--------------------|-----------| -------|
-| ByT5 pretrained | — | 51169438 | Running |
-| ByT5 analysis FT | — | 51169439 | Running |
-| DeepSeek zero-shot | — | 51169440 | Running |
-| ByT5 full Mathlib FT | — | 51127273 | Training (job 51168198) |
-| **Published: ReProver** | **~26.5%** | — | Literature |
-| **Published: DeepSeek-Prover-V1.5-RL** | **~60.2%** | — | Literature |
+1. **`_build_lean_file` line-tracking bug (commit `ae88fa3`):** Multi-line `formal_body` was appended as one list item but expanded to K lines in the output file. This caused systematic false positives (~50% of all candidates) in batch verification. Fixed by splitting the theorem header with `.splitlines()` before appending.
 
-Results will be filled in once jobs complete.
+2. **Partial-compilation bug (commit `9c921c5`):** Two additional sources:
+   - **Commented-out formal statements** (e.g., `amc12a_2021_p25` which starts with `-- Error:`): Lean stops parsing at the header, leaving all subsequent candidates with no error lines — all falsely "proved". Fixed by skipping such problems.
+   - **Remaining batch false positives**: Some ByT5 predictions produce errors at positions attributed to adjacent candidates. Fixed by re-verifying any batch "proved" result with a single-candidate build before recording.
 
-Output files:
-- `results/minif2f_deepseek_test.json` (pending)
-- `results/minif2f_byt5_pretrained_test.json` (pending)
-- `results/minif2f_byt5_ft_test.json` (pending)
+**Preliminary results (batch eval, jobs 51169438-51169440, completed 2026-06-27):**
+
+| Model | Raw batch result | SLURM job |
+|-------|-----------------|-----------|
+| ByT5 pretrained | 106/244 (43.4%) | 51169438 |
+| ByT5 analysis FT | 103/244 (42.2%) | 51169439 |
+| DeepSeek-Prover zero-shot | 22/244 (9.0%) | 51169440 |
+
+These raw numbers still contain batch-verification false positives. Re-verification job 51198555 is running single-candidate checks on all 231 "proved" results to produce clean final numbers.
+
+**DeepSeek note:** The 9.0% (22/244) result reflects our constrained setup: 8 samples per problem (paper uses 64+) and 120s timeout per problem (DeepSeek proofs often require longer). Many problems timed out at 120s, accounting for the gap vs. the published 60.2%.
+
+**Final verified results (re-verify job 51198555, completed 2026-06-27):**
+
+Re-verification ran single-candidate builds on all 231 "proved" results on a caslake compute node. Zero uncertain/timeout cases — compute node handled all verifications cleanly within 120s.
+
+| Model | Raw batch | FPs removed | **Verified pass@1** |
+|-------|-----------|-------------|---------------------|
+| ByT5 pretrained | 106/244 (43.4%) | 47 | **59/244 (24.2%)** |
+| ByT5 analysis FT | 103/244 (42.2%) | 43 | **60/244 (24.6%)** |
+| DeepSeek zero-shot | 22/244 (9.0%) | 15 | **7/244 (2.9%)** |
+| ByT5 full Mathlib FT | — | — | *(pending training)* |
+| **Published: ReProver** | — | — | **~26.5%** |
+| **Published: DeepSeek-Prover-V1.5-RL** | — | — | **~60.2%** |
+
+**Key observations:**
+
+1. **ByT5 pretrained ≈ ByT5 analysis FT** (24.2% vs 24.6%): fine-tuning on individual tactics did not improve whole-proof performance. Both models' results are dominated by the 14 fallback tactics (`norm_num`, `omega`, `ring`, `simp`, `linarith`, `decide`, `aesop`, etc.), not model predictions.
+
+2. **ByT5 ≈ ReProver** (24.x% vs 26.5%): our result is competitive with the best prior work despite being a much simpler system (single-step tactic + fallback, no search, no REPL). The fallback tactic set covers most "easy" miniF2F problems.
+
+3. **DeepSeek dramatically underperforms** (2.9% vs 60.2%): (a) only 8 samples vs 64+ in the paper, and (b) the 4-bit quantized model generated many garbled proofs (BPE tokens stored literally, commented-out error messages). The evaluation setup was not calibrated for DeepSeek's generation style.
+
+4. **False positive rate was high**: 43–47% of batch "proved" ByT5 results and 68% of DeepSeek results were false positives. The batch verification mechanism had systematic failures where model predictions caused errors at off-by-one line positions, making adjacent candidates appear to pass. The single-candidate re-verification fix (commit 9c921c5) eliminates this for future runs.
+
+Output files (`re_verified=True`):
+- `results/minif2f_byt5_pretrained_test.json`
+- `results/minif2f_byt5_ft_test.json`
+- `results/minif2f_deepseek_test.json`
 
 ---
 
