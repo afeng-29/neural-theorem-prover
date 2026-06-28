@@ -52,8 +52,12 @@ def reverify_one(pid: str, winning_proof: str) -> str:
             timeout=TIMEOUT, env=ENV,
         )
         output = result.stdout + result.stderr
-        if result.returncode == 0 and "error:" not in output.lower():
+        # Lean 4 error recovery can insert sorry on parse failure (exit 0 + warning).
+        # Treat sorry-containing declarations as false positives.
+        if result.returncode == 0 and "error:" not in output.lower() and "uses 'sorry'" not in output:
             return "confirmed"
+        if "uses 'sorry'" in output:
+            return "false_positive"
 
         # Definite failure: check for error lines
         error_lines = set()

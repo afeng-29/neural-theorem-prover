@@ -114,7 +114,9 @@ def verify_candidates(
         )
         output = result.stdout + result.stderr
 
-        if result.returncode == 0 and "error:" not in output.lower():
+        # Lean 4 error recovery can insert sorry implicitly (producing exit 0 + warning,
+        # not an error). Reject any build that uses sorry even without a compile error.
+        if result.returncode == 0 and "error:" not in output.lower() and "uses 'sorry'" not in output:
             return [True] * len(candidates)
 
         error_lines: set[int] = set()
@@ -263,8 +265,11 @@ def _clean_deepseek_proof(text: str) -> str:
         if not stripped:
             lines.append(ln)  # preserve blank lines (indentation structure)
             continue
-        # Stop at clear meta-commentary (not valid Lean)
+        # Stop at clear meta-commentary or English prose (not valid Lean)
         if re.search(r"(complete the following|lean 4 code|fill in|your answer|solution:|step \d+:|^The (theorem|proof|answer)|^Note:)", stripped, re.IGNORECASE):
+            break
+        # Stop at lines that use LaTeX $ notation with English surrounding words
+        if re.search(r'\$[A-Za-z_]', stripped) and re.search(r'\b(be|the|of|all|set|define|show|prove|note|let)\b', stripped, re.IGNORECASE):
             break
         # Stop at lines with excessive non-ASCII (raw BPE markers or natural language)
         non_ascii = sum(1 for c in stripped if ord(c) > 127)
