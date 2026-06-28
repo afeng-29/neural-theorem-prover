@@ -346,6 +346,16 @@ def run_eval(args):
 
         formal = prob["formal_statement"]
         thm_name, formal_body = parse_formal_statement(formal)
+
+        # Skip problems whose formal statement is entirely commented out — they produce
+        # a parse error at the theorem header, causing Lean to stop and falsely pass
+        # all subsequent candidates in the same batch file.
+        if formal_body.strip().startswith("--"):
+            logger.info("[%d/%d] %s — SKIPPED (commented-out formal statement)", idx + 1, len(problems), pid)
+            results[pid] = {"id": pid, "proved": False, "proof": None, "elapsed_seconds": 0.0,
+                            "informal_stmt": prob.get("informal_stmt", "")}
+            continue
+
         logger.info("[%d/%d] %s", idx + 1, len(problems), pid)
 
         t0 = time.time()
@@ -386,6 +396,21 @@ def run_eval(args):
 
         except Exception as e:
             logger.warning("Error on %s: %s", pid, e)
+
+        # Re-verify any batch-reported proof with a single-candidate build to eliminate
+        # false positives caused by multi-line predictions or other batch artifacts.
+        if proved and winning_proof is not None:
+            rechk = [{"thm_name": f"{thm_name}_rechk", "formal_body": formal_body, "proof_body": winning_proof}]
+            try:
+                ok_single = verify_candidates(rechk, lean_project, timeout=args.timeout)
+                if not ok_single[0]:
+                    logger.warning("  !! Batch false positive caught: %s  proof: %s", pid, winning_proof[:80])
+                    proved = False
+                    winning_proof = None
+            except Exception as e2:
+                logger.warning("  !! Re-verify error for %s: %s — marking failed", pid, e2)
+                proved = False
+                winning_proof = None
 
         elapsed = time.time() - t0
         if proved:
