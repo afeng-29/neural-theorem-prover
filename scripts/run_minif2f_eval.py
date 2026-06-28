@@ -242,6 +242,9 @@ def deepseek_generate_from_formal(
             continue
         for seq in outputs:
             text = model._tokenizer.decode(seq[prompt_len:], skip_special_tokens=True)
+            # LlamaTokenizerFast byte-level BPE: Ġ=space (U+0120), Ċ=newline (U+010A).
+            # decode() sometimes leaves these as literal chars — convert explicitly.
+            text = text.replace('Ġ', ' ').replace('Ċ', '\n')
             proof = _clean_deepseek_proof(text)
             if proof:
                 proofs.append(proof)
@@ -254,24 +257,24 @@ def _clean_deepseek_proof(text: str) -> str:
     """Extract and clean proof body from DeepSeek's generated text."""
     # Remove Markdown code fences
     text = re.sub(r"```[^\n]*\n?", "", text)
-    # Remove lines with non-ASCII that look like natural language
     lines = []
     for ln in text.splitlines():
         stripped = ln.strip()
         if not stripped:
+            lines.append(ln)  # preserve blank lines (indentation structure)
             continue
-        # Skip lines that look like English prose or meta-commentary
-        if re.search(r"(complete the following|lean 4 code|fill in|your answer|solution:|step \d+:|\bwe\b|\bthe\b.*\bis\b)", stripped, re.IGNORECASE):
+        # Stop at clear meta-commentary (not valid Lean)
+        if re.search(r"(complete the following|lean 4 code|fill in|your answer|solution:|step \d+:|^The (theorem|proof|answer)|^Note:)", stripped, re.IGNORECASE):
             break
-        # Skip lines with excessive non-ASCII (natural language)
+        # Stop at lines with excessive non-ASCII (raw BPE markers or natural language)
         non_ascii = sum(1 for c in stripped if ord(c) > 127)
-        if non_ascii > len(stripped) * 0.3:
+        if non_ascii > len(stripped) * 0.25:
             break
-        # Skip `sorry`
+        # Stop at sorry
         if re.search(r"\bsorry\b", stripped):
             return ""
         lines.append(ln)
-    return "\n".join(lines).strip()
+    return "\n".join(lines).rstrip()
 
 
 # ── ByT5 proof generation ─────────────────────────────────────────────────────
@@ -486,7 +489,7 @@ def main():
                         help="Limit to first N problems (default: all)")
     parser.add_argument("--top-k", type=int, default=8,
                         help="Number of proof candidates per problem")
-    parser.add_argument("--max-new-tokens", type=int, default=512,
+    parser.add_argument("--max-new-tokens", type=int, default=1024,
                         help="Max tokens for DeepSeek generation")
     parser.add_argument("--timeout", type=int, default=300,
                         help="Seconds per lake build call")
