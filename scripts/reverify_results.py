@@ -23,12 +23,17 @@ TIMEOUT = 120  # seconds — same as original eval
 elan_bin = Path.home() / ".elan" / "bin"
 ENV = {**os.environ, "PATH": f"{elan_bin}:{os.environ.get('PATH', '')}"}
 
-ds = {row["id"]: row for row in load_dataset("cat-searcher/minif2f-lean4", split="test")}
+# Load both splits so validation results can also be re-verified.
+ds = {}
+for _split in ("test", "validation"):
+    for row in load_dataset("cat-searcher/minif2f-lean4", split=_split):
+        ds[row["id"]] = row
 
 RESULT_FILES = [
-    ("/project/dachxiu/afeng/prover/results/minif2f_byt5_ft_test.json",         "ByT5-FT"),
-    ("/project/dachxiu/afeng/prover/results/minif2f_byt5_pretrained_test.json", "ByT5-pre"),
-    ("/project/dachxiu/afeng/prover/results/minif2f_deepseek_test.json",         "DeepSeek"),
+    ("/project/dachxiu/afeng/prover/results/minif2f_byt5_ft_test.json",         "ByT5-FT",       "test"),
+    ("/project/dachxiu/afeng/prover/results/minif2f_byt5_pretrained_test.json", "ByT5-pre",      "test"),
+    ("/project/dachxiu/afeng/prover/results/minif2f_deepseek_test.json",         "DeepSeek-test", "test"),
+    ("/project/dachxiu/afeng/prover/results/minif2f_deepseek_valid.json",        "DeepSeek-valid","validation"),
 ]
 
 
@@ -87,7 +92,10 @@ subprocess.run(["lake", "build", "TheoremProver"], cwd=LEAN_PROJECT,
                capture_output=True, timeout=300, env=ENV)
 logger.info("Cache warm. Starting re-verification.")
 
-for fpath, name in RESULT_FILES:
+for fpath, name, _split in RESULT_FILES:
+    if not Path(fpath).exists():
+        logger.info("=== %s: result file not found, skipping ===", name)
+        continue
     with open(fpath) as f:
         data = json.load(f)
     results = data["results"]
