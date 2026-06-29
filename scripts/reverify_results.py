@@ -32,7 +32,7 @@ for _split in ("test", "validation"):
 RESULT_FILES = [
     ("/project/dachxiu/afeng/prover/results/minif2f_byt5_ft_test.json",         "ByT5-FT",       "test"),
     ("/project/dachxiu/afeng/prover/results/minif2f_byt5_pretrained_test.json", "ByT5-pre",      "test"),
-    ("/project/dachxiu/afeng/prover/results/minif2f_deepseek_test.json",         "DeepSeek-test", "test"),
+    ("/project/dachxiu/afeng/prover/results/minif2f_deepseek_base_test.json",     "DeepSeek-test", "test"),
     ("/project/dachxiu/afeng/prover/results/minif2f_deepseek_valid.json",        "DeepSeek-valid","validation"),
 ]
 
