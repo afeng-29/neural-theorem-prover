@@ -37,12 +37,12 @@ python3 training/finetune_deepseek.py \
     --train-data  data/deepseek_lora_train.jsonl \
     --output-dir  models/finetuned/deepseek_minif2f/ \
     --epochs      10 \
-    --batch-size  2 \
-    --grad-accum  8 \
+    --batch-size  1 \
+    --grad-accum  16 \
     --lr          2e-4 \
     --lora-r      16 \
     --lora-alpha  32 \
-    --max-length  2048 \
+    --max-length  512 \
     --load-in-4bit
 
 echo "=== LoRA training done. Adapter at models/finetuned/deepseek_minif2f/lora_adapter ==="

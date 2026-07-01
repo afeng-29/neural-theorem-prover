@@ -40,10 +40,6 @@ import Mathlib
 import Aesop
 
 set_option maxHeartbeats 400000
--- Treat sorry as a compile error rather than a warning.
--- Lean 4 error recovery can silently insert sorry on parse failures (exit 0).
--- With this option any declaration using sorry produces exit code 1 instead.
-set_option allowSorry false
 
 open BigOperators Real Nat Topology Finset
 

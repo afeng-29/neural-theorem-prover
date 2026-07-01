@@ -1,13 +1,13 @@
 {
-  "model": "kaiyuy/leandojo-lean4-tacgen-byt5-small",
+  "model": "models/pretrained/deepseek-prover-v1.5-rl",
   "lean_project": "./lean_project",
-  "timeout": 120.0,
-  "max_depth": 50,
+  "timeout": 300.0,
+  "max_depth": 20,
   "summary": {
     "total": 12,
-    "success": 11,
-    "failed": 1,
-    "success_rate": 0.9166666666666666
+    "success": 12,
+    "failed": 0,
+    "success_rate": 1.0
   },
   "results": [
     {
@@ -17,15 +17,10 @@
         "n : \u2115"
       ],
       "success": true,
-      "proof": "rw [Nat.add_zero]",
-      "steps": [
-        {
-          "state": "n : \u2115\n\u22a2 n + 0 = n",
-          "tactic": "rw [Nat.add_zero]"
-        }
-      ],
-      "nodes_expanded": 1,
-      "elapsed_seconds": 270.14931716599676,
+      "proof": "rfl",
+      "steps": [],
+      "nodes_expanded": 20,
+      "elapsed_seconds": 66.86475108843297,
       "error": ""
     },
     {
@@ -35,15 +30,10 @@
         "n : \u2115"
       ],
       "success": true,
-      "proof": "rw [zero_add]",
-      "steps": [
-        {
-          "state": "n : \u2115\n\u22a2 0 + n = n",
-          "tactic": "rw [zero_add]"
-        }
-      ],
-      "nodes_expanded": 1,
-      "elapsed_seconds": 259.9143791249953,
+      "proof": "simp",
+      "steps": [],
+      "nodes_expanded": 22,
+      "elapsed_seconds": 51.32671560999006,
       "error": ""
     },
     {
@@ -53,15 +43,10 @@
         "n m : \u2115"
       ],
       "success": true,
-      "proof": "rw [add_comm, add_comm]",
-      "steps": [
-        {
-          "state": "n m : \u2115\n\u22a2 n + m = m + n",
-          "tactic": "rw [add_comm, add_comm]"
-        }
-      ],
-      "nodes_expanded": 1,
-      "elapsed_seconds": 224.44681241600483,
+      "proof": "rw [add_comm]\n<;> simp_all\n<;> rfl\n<;> linarith\n<;> simp_all\n<;> rfl\n<;> linarith\n<;> simp_all\n<;> rfl\n<;> linarith\n<;> simp_all\n<;> rfl\n<;> linarith\n<;> simp_all\n<;> rfl\n<;> linarith\n<;> simp_all\n<;> rfl\n<;> linarith\n<;> simp_all\n<;> rfl\n<;> linarith\n<;> simp_all\n<;> rfl\n<;> linarith\n<;> simp_all\n<;> rfl\n<;> linarith\n<;> simp_all\n<;> rfl\n<;> linarith\n<;> simp",
+      "steps": [],
+      "nodes_expanded": 28,
+      "elapsed_seconds": 52.357921686954796,
       "error": ""
     },
     {
@@ -71,19 +56,10 @@
         "n m k : \u2115"
       ],
       "success": true,
-      "proof": "rw [add_comm, add_left_comm]\nall_goals omega",
-      "steps": [
-        {
-          "state": "n m k : \u2115\n\u22a2 n + m + k = n + (m + k)",
-          "tactic": "rw [add_comm, add_left_comm]"
-        },
-        {
-          "state": "case h\nn m k : \u2115\n\u22a2 k + (?h.a + (n + m)) = n + (m + k) + ?h.a\n\ncase h.a\nn m k : \u2115\n\u22a2 \u2115",
-          "tactic": "all_goals omega"
-        }
-      ],
-      "nodes_expanded": 5,
-      "elapsed_seconds": 246.6324963750085,
+      "proof": "rw [Nat.add_assoc]",
+      "steps": [],
+      "nodes_expanded": 26,
+      "elapsed_seconds": 52.399077081121504,
       "error": ""
     },
     {
@@ -93,15 +69,10 @@
         "P Q : Prop"
       ],
       "success": true,
-      "proof": "tauto",
-      "steps": [
-        {
-          "state": "P Q : Prop\n\u22a2 P \u2227 Q \u2192 Q \u2227 P",
-          "tactic": "tauto"
-        }
-      ],
-      "nodes_expanded": 1,
-      "elapsed_seconds": 216.48898216700763,
+      "proof": "intro PQ\ntauto",
+      "steps": [],
+      "nodes_expanded": 29,
+      "elapsed_seconds": 51.26080298516899,
       "error": ""
     },
     {
@@ -111,15 +82,10 @@
         "P : Prop"
       ],
       "success": true,
-      "proof": "simpa using P",
-      "steps": [
-        {
-          "state": "P : Prop\n\u22a2 P \u2192 P",
-          "tactic": "simpa using P"
-        }
-      ],
-      "nodes_expanded": 1,
-      "elapsed_seconds": 217.49213287500606,
+      "proof": "intro h; exact h",
+      "steps": [],
+      "nodes_expanded": 25,
+      "elapsed_seconds": 51.32388942409307,
       "error": ""
     },
     {
@@ -129,15 +95,10 @@
         "P Q R : Prop"
       ],
       "success": true,
-      "proof": "simp (config := {contextual := true})",
-      "steps": [
-        {
-          "state": "P Q R : Prop\n\u22a2 (P \u2192 Q) \u2192 (Q \u2192 R) \u2192 P \u2192 R",
-          "tactic": "simp (config := {contextual := true})"
-        }
-      ],
-      "nodes_expanded": 1,
-      "elapsed_seconds": 220.59188795799855,
+      "proof": "aesop",
+      "steps": [],
+      "nodes_expanded": 23,
+      "elapsed_seconds": 51.58836736343801,
       "error": ""
     },
     {
@@ -147,15 +108,10 @@
         "P Q : Prop"
       ],
       "success": true,
-      "proof": "aesop",
-      "steps": [
-        {
-          "state": "P Q : Prop\n\u22a2 P \u2228 Q \u2192 Q \u2228 P",
-          "tactic": "aesop"
-        }
-      ],
-      "nodes_expanded": 1,
-      "elapsed_seconds": 215.12494345899904,
+      "proof": "intros\ntauto",
+      "steps": [],
+      "nodes_expanded": 29,
+      "elapsed_seconds": 51.22664402611554,
       "error": ""
     },
     {
@@ -165,15 +121,10 @@
         "n : \u2115"
       ],
       "success": true,
-      "proof": "rw [two_mul]",
-      "steps": [
-        {
-          "state": "n : \u2115\n\u22a2 2 * n = n + n",
-          "tactic": "rw [two_mul]"
-        }
-      ],
-      "nodes_expanded": 1,
-      "elapsed_seconds": 239.41500466699654,
+      "proof": "rw[two_mul]",
+      "steps": [],
+      "nodes_expanded": 28,
+      "elapsed_seconds": 52.26045455504209,
       "error": ""
     },
     {
@@ -182,11 +133,11 @@
       "hypotheses": [
         "n m k : \u2115"
       ],
-      "success": false,
-      "proof": null,
+      "success": true,
+      "proof": "induction n with\n| zero =>\nsimp_all\n| succ n ih =>\nsimp_all [Nat.succ_eq_add_one]\nall_goals omega",
       "steps": [],
-      "nodes_expanded": 14,
-      "elapsed_seconds": 1000.0236504999921,
+      "nodes_expanded": 23,
+      "elapsed_seconds": 52.2986976346001,
       "error": ""
     },
     {
@@ -196,15 +147,10 @@
         "P : Prop"
       ],
       "success": true,
-      "proof": "simp",
-      "steps": [
-        {
-          "state": "P : Prop\n\u22a2 \u00ac\u00acP \u2192 P",
-          "tactic": "simp"
-        }
-      ],
-      "nodes_expanded": 1,
-      "elapsed_seconds": 288.4862917080027,
+      "proof": "tauto",
+      "steps": [],
+      "nodes_expanded": 27,
+      "elapsed_seconds": 51.06153555866331,
       "error": ""
     },
     {
@@ -215,14 +161,9 @@
       ],
       "success": true,
       "proof": "tauto",
-      "steps": [
-        {
-          "state": "P Q R : Prop\n\u22a2 P \u2227 (Q \u2228 R) \u2192 P \u2227 Q \u2228 P \u2227 R",
-          "tactic": "tauto"
-        }
-      ],
-      "nodes_expanded": 1,
-      "elapsed_seconds": 228.9175034170039,
+      "steps": [],
+      "nodes_expanded": 26,
+      "elapsed_seconds": 51.711390966549516,
       "error": ""
     }
   ]

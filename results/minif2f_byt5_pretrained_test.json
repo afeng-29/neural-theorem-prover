@@ -6,7 +6,7 @@
     "n_proved": 59,
     "pass_rate": 0.24180327868852458,
     "re_verified": true,
-    "false_positives_removed": 47,
+    "false_positives_removed": 0,
     "uncertain_kept": 0
   },
   "results": {

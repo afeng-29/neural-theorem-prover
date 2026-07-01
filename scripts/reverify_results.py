@@ -84,13 +84,16 @@ def reverify_one(pid: str, winning_proof: str) -> str:
         GOALS_FILE.write_text(original, encoding="utf-8")
 
 
-# Warm the lake cache first
+# Warm the lake cache first (allow up to 20 min; GPU nodes may still need linking)
 logger.info("Warming lake cache...")
 warmup = MINIF2F_PREAMBLE + "\ntheorem warmup_rv (n : ℕ) : n = n := rfl\n"
 GOALS_FILE.write_text(warmup)
-subprocess.run(["lake", "build", "TheoremProver"], cwd=LEAN_PROJECT,
-               capture_output=True, timeout=300, env=ENV)
-logger.info("Cache warm. Starting re-verification.")
+try:
+    subprocess.run(["lake", "build", "TheoremProver"], cwd=LEAN_PROJECT,
+                   capture_output=True, timeout=1200, env=ENV)
+    logger.info("Cache warm. Starting re-verification.")
+except subprocess.TimeoutExpired:
+    logger.warning("Warmup timed out — proceeding anyway (cache may be cold, expect slower first build)")
 
 for fpath, name, _split in RESULT_FILES:
     if not Path(fpath).exists():

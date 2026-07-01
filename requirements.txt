@@ -15,6 +15,7 @@ jsonlines>=4.0.0
 # Training utilities
 peft>=0.8.0
 bitsandbytes>=0.41.0
+trl>=0.8.0
 
 # Utilities
 tqdm>=4.66.0

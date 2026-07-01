@@ -1,7 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=reverify
-#SBATCH --partition=caslake
-#SBATCH --mem=32G
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:1
+#SBATCH --mem=48G
 #SBATCH --cpus-per-task=8
 #SBATCH --time=4:00:00
 #SBATCH --output=/project/dachxiu/afeng/prover/logs/reverify_%j.log
