@@ -375,7 +375,7 @@ class DeepSeekProverModel:
         self.lora_adapter = lora_adapter  # path to saved PEFT LoRA adapter dir
         self._model = None
         self._tokenizer = None
-        self._generate_batch = 8  # A40 has 47.6GB VRAM; 7B model uses 14GB, plenty for batch=8
+        self._generate_batch = 4  # batch=8 OOMs even on 47.6GB A40 (KV cache for 32 heads × 8 seqs × 1024 tokens)
 
     def _ensure_loaded(self):
         if self._model is not None:
@@ -387,21 +387,43 @@ class DeepSeekProverModel:
             self.model_id, trust_remote_code=True
         )
 
-        kwargs: dict = {"trust_remote_code": True, "device_map": "auto"}
+        quantized = self.load_in_4bit
         if self.load_in_4bit:
-            kwargs["quantization_config"] = BitsAndBytesConfig(load_in_4bit=True)
+            # 4-bit: must use device_map so BitsAndBytes can quantize per-device
+            kwargs: dict = {
+                "trust_remote_code": True, "device_map": "auto",
+                "quantization_config": BitsAndBytesConfig(load_in_4bit=True),
+            }
+            self._model = AutoModelForCausalLM.from_pretrained(self.model_id, **kwargs)
         else:
-            # Model config specifies bfloat16; float16 overflows on this model's weight
-            # magnitudes and produces NaN logits during sampling.
-            kwargs["dtype"] = torch.bfloat16
-
-        self._model = AutoModelForCausalLM.from_pretrained(self.model_id, **kwargs)
+            # Load to CPU first (no device_map) to skip transformers 5.x
+            # caching_allocator_warmup, which tries to allocate ~7GB as a contiguous
+            # warmup block and fails on shared/busy GPU nodes.
+            self._model = AutoModelForCausalLM.from_pretrained(
+                self.model_id, trust_remote_code=True, dtype=torch.bfloat16,
+            )
+            cuda_dev = "cuda:0" if torch.cuda.is_available() else "cpu"
+            try:
+                self._model = self._model.to(cuda_dev)
+            except RuntimeError as e:
+                if "out of memory" not in str(e).lower():
+                    raise
+                # GPU full (shared node) — fall back to 4-bit quantization (~3.5GB vs 14GB)
+                logger.warning("BF16 GPU load OOM — falling back to 4-bit quantization")
+                del self._model
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                self._model = AutoModelForCausalLM.from_pretrained(
+                    self.model_id, trust_remote_code=True, device_map="auto",
+                    quantization_config=BitsAndBytesConfig(load_in_4bit=True),
+                )
+                quantized = True
 
         if self.lora_adapter:
             from peft import PeftModel
             logger.info("Loading LoRA adapter from %s", self.lora_adapter)
             self._model = PeftModel.from_pretrained(self._model, self.lora_adapter)
-            if not self.load_in_4bit:
+            if not quantized:
                 self._model = self._model.to(torch.bfloat16)
 
         self._model.eval()
@@ -486,6 +508,84 @@ class DeepSeekProverModel:
             remaining -= bs
         logger.info("DeepSeek generated %d non-empty proof scripts", len(proofs))
         return proofs
+
+    @torch.no_grad()
+    def generate_next_tactics(
+        self,
+        formal_statement: str,
+        applied_tactics: list[str],
+        n: int = 8,
+        max_new_tokens: int = 80,
+        temperature: float = 0.8,
+        top_p: float = 0.95,
+    ) -> list[str]:
+        """
+        Given the theorem and tactics applied so far, generate n candidate
+        SINGLE next tactics (one tactic per candidate, not whole proofs).
+
+        Used by the tree-search prover to expand nodes in the proof tree.
+
+        formal_statement: 'theorem NAME PARAMS : GOAL := sorry'
+        applied_tactics:  list of tactics already applied (may be empty)
+        Returns: list of tactic strings (de-duplicated, first non-empty line each)
+        """
+        self._ensure_loaded()
+
+        # Build prompt: preamble + theorem stub + tactics applied so far
+        # Model continues from the next indented line (next tactic)
+        base = re.sub(r":=\s*sorry\s*$", "", formal_statement.strip())
+        prompt = _DEEPSEEK_PROVER_HEADER + base + " := by\n"
+        if applied_tactics:
+            prompt += "\n".join(f"  {t}" for t in applied_tactics) + "\n"
+        prompt += "  "  # indent for the next tactic
+
+        device = next(self._model.parameters()).device
+        inputs = self._tokenizer(
+            prompt, return_tensors="pt", max_length=2048, truncation=True
+        ).to(device)
+        prompt_len = inputs["input_ids"].shape[1]
+
+        raw_lines: list[str] = []
+        remaining = n
+        while remaining > 0:
+            bs = min(self._generate_batch, remaining)
+            try:
+                outputs = self._model.generate(
+                    **inputs,
+                    max_new_tokens=max_new_tokens,
+                    do_sample=True,
+                    temperature=temperature,
+                    top_p=top_p,
+                    num_return_sequences=bs,
+                    pad_token_id=self._tokenizer.eos_token_id,
+                )
+            except torch.cuda.OutOfMemoryError:
+                import gc as _gc
+                _gc.collect()
+                torch.cuda.empty_cache()
+                if bs == 1:
+                    break
+                self._generate_batch = max(1, self._generate_batch // 2)
+                continue
+            for seq in outputs:
+                text = self._tokenizer.decode(seq[prompt_len:], skip_special_tokens=True)
+                text = text.replace("Ġ", " ").replace("Ċ", "\n")
+                # Take only the first non-empty, non-comment line = next tactic
+                for line in text.splitlines():
+                    stripped = line.strip()
+                    if stripped and not stripped.startswith("--"):
+                        raw_lines.append(stripped)
+                        break
+            remaining -= bs
+
+        # De-duplicate while preserving order
+        seen: set[str] = set()
+        tactics: list[str] = []
+        for t in raw_lines:
+            if t not in seen and not re.search(r"\bsorry\b", t):
+                seen.add(t)
+                tactics.append(t)
+        return tactics
 
     @torch.no_grad()
     def predict_tactics(

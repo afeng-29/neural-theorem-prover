@@ -6,7 +6,9 @@ set -euo pipefail
 cd /user/af3698/neural-theorem-prover
 source venv/bin/activate
 
-export CUDA_VISIBLE_DEVICES=0
+# Use SGE-allocated GPU if set; fall back to 0. Do NOT hardcode 0 — on multi-GPU
+# nodes SGE may allocate GPU 1+ and hardcoding 0 hits another job's memory.
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 export PATH="$HOME/.elan/bin:$PATH"
 LEAN_PROJECT="$(pwd)/lean_project"
 MODEL_PATH="models/pretrained/deepseek-prover-v1.5-rl"
@@ -29,6 +31,7 @@ echo "=== [3/3] Eval: base model, top_k=64 ==="
 cd /user/af3698/neural-theorem-prover
 mkdir -p results
 export CUDA_LAUNCH_BLOCKING=1
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 python3 scripts/run_minif2f_eval.py \
     --model-type deepseek \

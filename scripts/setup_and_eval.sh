@@ -7,9 +7,10 @@ set -euo pipefail
 cd /user/af3698/neural-theorem-prover
 source venv/bin/activate
 
-# Force single GPU: device_map="auto" splits across all visible GPUs on multi-GPU nodes,
-# corrupting activations via cross-device tensor transfers. Limit to cuda:0 only.
-export CUDA_VISIBLE_DEVICES=0
+# Use SGE-allocated GPU if set; fall back to 0. Do NOT hardcode 0 — on multi-GPU
+# nodes SGE may allocate GPU 1+ and hardcoding 0 hits another job's memory.
+# device_map={"": "cuda:0"} in Python ensures single-GPU placement regardless.
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 export PATH="$HOME/.elan/bin:$PATH"
 LEAN_PROJECT="$(pwd)/lean_project"
 MODEL_PATH="${MODEL_PATH:-models/pretrained/deepseek-prover-v1.5-rl}"
