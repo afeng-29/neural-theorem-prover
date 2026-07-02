@@ -3,8 +3,11 @@
     "model_type": "deepseek",
     "split": "test",
     "n_attempted": 244,
-    "n_proved": 42,
-    "pass_rate": 0.1721311475409836
+    "n_proved": 41,
+    "pass_rate": 0.1680327868852459,
+    "re_verified": true,
+    "false_positives_removed": 1,
+    "uncertain_kept": 0
   },
   "results": {
     "mathd_algebra_478": {
@@ -590,8 +593,8 @@
     },
     "numbertheory_2pownm1prime_nprime": {
       "id": "numbertheory_2pownm1prime_nprime",
-      "proved": true,
-      "proof": "exact?",
+      "proved": false,
+      "proof": null,
       "elapsed_seconds": 118.31173801422119,
       "informal_stmt": "Show that if $n$ is a positive integer and $2^n - 1$ is prime, then $n$ is prime."
     },

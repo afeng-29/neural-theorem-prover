@@ -30,14 +30,15 @@ for _split in ("test", "validation"):
         ds[row["id"]] = row
 
 RESULT_FILES = [
-    ("/project/dachxiu/afeng/prover/results/minif2f_byt5_pretrained_test.json",  "ByT5-pre",      "test"),
-    ("/project/dachxiu/afeng/prover/results/minif2f_byt5_ft_test.json",          "ByT5-FT",       "test"),
-    ("/project/dachxiu/afeng/prover/results/minif2f_byt5_ep5_test.json",         "ByT5-ep5",      "test"),
-    ("/project/dachxiu/afeng/prover/results/minif2f_deepseek_base_test.json",    "DeepSeek-base", "test"),
-    ("/project/dachxiu/afeng/prover/results/minif2f_deepseek_valid.json",        "DeepSeek-valid","validation"),
-    ("/project/dachxiu/afeng/prover/results/minif2f_deepseek_lora_test.json",    "DeepSeek-LoRA", "test"),
+    ("/project/dachxiu/afeng/prover/results/minif2f_byt5_pretrained_test.json",   "ByT5-pre",        "test"),
+    ("/project/dachxiu/afeng/prover/results/minif2f_byt5_ft_test.json",           "ByT5-FT",         "test"),
+    ("/project/dachxiu/afeng/prover/results/minif2f_byt5_ep5_test.json",          "ByT5-ep5",        "test"),
+    ("/project/dachxiu/afeng/prover/results/minif2f_deepseek_base_test.json",     "DeepSeek-base",   "test"),
+    ("/project/dachxiu/afeng/prover/results/minif2f_deepseek_valid.json",         "DeepSeek-valid",  "validation"),
+    ("/project/dachxiu/afeng/prover/results/minif2f_deepseek_lora_test.json",     "DeepSeek-LoRA-V1","test"),
+    ("/project/dachxiu/afeng/prover/results/minif2f_deepseek_lora_v2_test.json",  "DeepSeek-LoRA-V2","test"),
     # Uncomment when ep6 eval completes:
-    # ("/project/dachxiu/afeng/prover/results/minif2f_byt5_ep6_test.json",       "ByT5-ep6",      "test"),
+    # ("/project/dachxiu/afeng/prover/results/minif2f_byt5_ep6_test.json",        "ByT5-ep6",        "test"),
 ]
 
 

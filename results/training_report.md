@@ -1026,16 +1026,16 @@ Data prepared via `scripts/prepare_lora_data.py`. Key fix: Lean-Workbook uses `:
 | Trainer | SFTTrainer (TRL library) |
 | Script | `training/finetune_deepseek_v2.py`, `scripts/run_lora_train_v2.sh` |
 
-**miniF2F results (test split, `top_k=32`, `timeout=300s`):**
+**miniF2F results (test split, `top_k=32`, `timeout=300s`, single-candidate re-verified):**
 
-| Model | **Verified pass@1** | Notes |
-|-------|---------------------|-------|
-| DeepSeek base (reference) | 60/244 (24.6%) | |
-| **DeepSeek LoRA V2** | **42/244 (17.2%)** | −7.4 pp vs base |
+| Model | Raw | FPs removed | **Verified pass@1** |
+|-------|-----|-------------|---------------------|
+| DeepSeek base (reference) | 60 | 8 | 60/244 (24.6%) |
+| **DeepSeek LoRA V2** | 42 | 1 | **41/244 (16.8%)** |
 
-Result file: `results/minif2f_deepseek_lora_v2_test.json`
+Result file: `results/minif2f_deepseek_lora_v2_test.json` (`re_verified=True`). The 1 FP was `exact?` — a Lean 4 tactic-search hint that interactively finds a lemma name but is not a standalone proof term; it fails in batch `lake build` without an interactive session.
 
-**The LoRA V2 adapter degraded performance** despite the much larger training set (10,561 vs 67 examples). All 42 proved theorems used short closers (`omega`, `linarith`, `ring`, `norm_num`, `rfl`) — identical to what the base model finds by greedy search. The LoRA adapter added no capability beyond what the unmodified base model already has.
+**The LoRA V2 adapter degraded performance** despite the much larger training set (10,561 vs 67 examples). All 41 proved theorems used short closers (`omega`, `linarith`, `ring`, `norm_num`, `rfl`) — identical to what the base model finds by greedy search. The LoRA adapter added no capability beyond what the unmodified base model already has.
 
 **Root cause — training distribution mismatch:** Lean-Workbook proofs are single-tactic closers on simple algebraic/number-theoretic statements. miniF2F competition problems require multi-step proofs with intermediate `have` lemmas, `calc` blocks, and domain-specific Mathlib API calls. Training on Lean-Workbook single-tactic proofs teaches the model to produce short terminating tactics, which is exactly the wrong inductive bias for problems that need structured multi-line proofs. The training signal actively worked against the base model's pre-trained multi-step generation capability.
 
@@ -1052,7 +1052,7 @@ Result file: `results/minif2f_deepseek_lora_v2_test.json`
 | ByT5 Mathlib FT ep3 | tactic+fallback, top_k=32 | 60/244 (24.6%) | |
 | DeepSeek LoRA V1 | whole-proof, top_k=32, 300s | 45/244 (18.4%) | 67-example train set, V100 4-bit |
 | **ByT5 Mathlib FT ep5** | tactic+fallback, top_k=32 | **70/244 (28.7%)** | **Best result** |
-| DeepSeek LoRA V2 | whole-proof, top_k=32, 300s | 42/244 (17.2%) | 10,561-example train set, BF16; −7 pp vs base |
+| DeepSeek LoRA V2 | whole-proof, top_k=32, 300s | 41/244 (16.8%) | 10,561-example train set, BF16; −7.8 pp vs base |
 | **Published: ReProver** | — | ~26.5% | |
 | **Published: DeepSeek-Prover-V1.5-RL** | — | ~60.2% | |
 
