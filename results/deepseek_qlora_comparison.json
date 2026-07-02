@@ -1,0 +1,533 @@
+{
+  "n_theorems": 24,
+  "timeout": 300.0,
+  "top_k": 32,
+  "model_type": "deepseek",
+  "pretrained": {
+    "model": "models/pretrained/deepseek-prover-v1.5-rl",
+    "success": 23,
+    "total": 24,
+    "success_rate": 0.9583333333333334,
+    "results": [
+      {
+        "label": "continuous_const",
+        "theorem": "Continuous (fun _ : \u211d => c)",
+        "hypotheses": [
+          "c : \u211d"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "continuity",
+        "nodes_expanded": 11,
+        "elapsed_seconds": 556.7039777422324,
+        "error": ""
+      },
+      {
+        "label": "continuous_id",
+        "theorem": "Continuous (id : \u211d \u2192 \u211d)",
+        "hypotheses": [],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "rw [continuous_iff_continuousAt]\nintro x\nexact continuousAt_id",
+        "nodes_expanded": 16,
+        "elapsed_seconds": 159.4574525197968,
+        "error": ""
+      },
+      {
+        "label": "continuous_add",
+        "theorem": "Continuous (fun x => f x + g x)",
+        "hypotheses": [
+          "f g : \u211d \u2192 \u211d",
+          "hf : Continuous f",
+          "hg : Continuous g"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "continuity",
+        "nodes_expanded": 12,
+        "elapsed_seconds": 150.36685309931636,
+        "error": ""
+      },
+      {
+        "label": "continuous_mul",
+        "theorem": "Continuous (fun x => f x * g x)",
+        "hypotheses": [
+          "f g : \u211d \u2192 \u211d",
+          "hf : Continuous f",
+          "hg : Continuous g"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "continuity",
+        "nodes_expanded": 12,
+        "elapsed_seconds": 149.18207720201463,
+        "error": ""
+      },
+      {
+        "label": "continuous_comp",
+        "theorem": "Continuous (f \u2218 g)",
+        "hypotheses": [
+          "f g : \u211d \u2192 \u211d",
+          "hf : Continuous f",
+          "hg : Continuous g"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "exact Continuous.comp hf hg",
+        "nodes_expanded": 28,
+        "elapsed_seconds": 150.75350695848465,
+        "error": ""
+      },
+      {
+        "label": "continuous_neg",
+        "theorem": "Continuous (fun x => -f x)",
+        "hypotheses": [
+          "f : \u211d \u2192 \u211d",
+          "hf : Continuous f"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "exact hf.neg",
+        "nodes_expanded": 18,
+        "elapsed_seconds": 152.20230808947235,
+        "error": ""
+      },
+      {
+        "label": "continuousAt_of_continuous",
+        "theorem": "ContinuousAt f x",
+        "hypotheses": [
+          "f : \u211d \u2192 \u211d",
+          "hf : Continuous f",
+          "x : \u211d"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "rw [ContinuousAt]\nexact hf.continuousAt",
+        "nodes_expanded": 27,
+        "elapsed_seconds": 149.96016030199826,
+        "error": ""
+      },
+      {
+        "label": "continuousAt_const",
+        "theorem": "ContinuousAt (fun _ : \u211d => c) x",
+        "hypotheses": [
+          "c x : \u211d"
+        ],
+        "difficulty": "easy",
+        "success": false,
+        "proof": null,
+        "nodes_expanded": 8,
+        "elapsed_seconds": 150.58259484358132,
+        "error": ""
+      },
+      {
+        "label": "differentiable_const",
+        "theorem": "Differentiable \u211d (fun _ : \u211d => c)",
+        "hypotheses": [
+          "c : \u211d"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "apply differentiable_const",
+        "nodes_expanded": 21,
+        "elapsed_seconds": 148.68870080634952,
+        "error": ""
+      },
+      {
+        "label": "differentiable_id",
+        "theorem": "Differentiable \u211d (id : \u211d \u2192 \u211d)",
+        "hypotheses": [],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "apply differentiable_id",
+        "nodes_expanded": 18,
+        "elapsed_seconds": 147.65058361832052,
+        "error": ""
+      },
+      {
+        "label": "differentiable_add",
+        "theorem": "Differentiable \u211d (fun x => f x + g x)",
+        "hypotheses": [
+          "f g : \u211d \u2192 \u211d",
+          "hf : Differentiable \u211d f",
+          "hg : Differentiable \u211d g"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "intro x\nexact hf.differentiableAt.add hg.differentiableAt",
+        "nodes_expanded": 21,
+        "elapsed_seconds": 151.78527128882706,
+        "error": ""
+      },
+      {
+        "label": "differentiable_neg",
+        "theorem": "Differentiable \u211d (fun x => -f x)",
+        "hypotheses": [
+          "f : \u211d \u2192 \u211d",
+          "hf : Differentiable \u211d f"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "aesop",
+        "nodes_expanded": 30,
+        "elapsed_seconds": 150.66222534887493,
+        "error": ""
+      },
+      {
+        "label": "differentiable_comp",
+        "theorem": "Differentiable \u211d (f \u2218 g)",
+        "hypotheses": [
+          "f g : \u211d \u2192 \u211d",
+          "hf : Differentiable \u211d f",
+          "hg : Differentiable \u211d g"
+        ],
+        "difficulty": "medium",
+        "success": true,
+        "proof": "apply Differentiable.comp hf hg\n<;> simp\n<;> linarith",
+        "nodes_expanded": 29,
+        "elapsed_seconds": 151.25038938689977,
+        "error": ""
+      },
+      {
+        "label": "differentiable_mul",
+        "theorem": "Differentiable \u211d (fun x => f x * g x)",
+        "hypotheses": [
+          "f g : \u211d \u2192 \u211d",
+          "hf : Differentiable \u211d f",
+          "hg : Differentiable \u211d g"
+        ],
+        "difficulty": "medium",
+        "success": true,
+        "proof": "intro x\napply DifferentiableAt.mul (hf x) (hg x)",
+        "nodes_expanded": 23,
+        "elapsed_seconds": 150.919488879852,
+        "error": ""
+      },
+      {
+        "label": "hasDerivAt_const",
+        "theorem": "HasDerivAt (fun _ => c) 0 x",
+        "hypotheses": [
+          "x c : \u211d"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "simpa using hasDerivAt_const x c",
+        "nodes_expanded": 28,
+        "elapsed_seconds": 151.50671671517193,
+        "error": ""
+      },
+      {
+        "label": "hasDerivAt_id",
+        "theorem": "HasDerivAt id 1 x",
+        "hypotheses": [
+          "x : \u211d"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "simpa using hasDerivAt_id x",
+        "nodes_expanded": 22,
+        "elapsed_seconds": 157.12618815153837,
+        "error": ""
+      },
+      {
+        "label": "hasDerivAt_add",
+        "theorem": "HasDerivAt (fun x => f x + g x) (f' + g') x",
+        "hypotheses": [
+          "f g : \u211d \u2192 \u211d",
+          "f' g' x : \u211d",
+          "hf : HasDerivAt f f' x",
+          "hg : HasDerivAt g g' x"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "apply HasDerivAt.add\nassumption\nassumption",
+        "nodes_expanded": 18,
+        "elapsed_seconds": 159.75351970270276,
+        "error": ""
+      },
+      {
+        "label": "hasDerivAt_const_mul",
+        "theorem": "HasDerivAt (fun x => c * f x) (c * f') x",
+        "hypotheses": [
+          "f : \u211d \u2192 \u211d",
+          "f' x c : \u211d",
+          "hf : HasDerivAt f f' x"
+        ],
+        "difficulty": "medium",
+        "success": true,
+        "proof": "apply HasDerivAt.const_mul (c := c)\napply hf",
+        "nodes_expanded": 23,
+        "elapsed_seconds": 160.86308971606195,
+        "error": ""
+      },
+      {
+        "label": "hasDerivAt_neg",
+        "theorem": "HasDerivAt (fun x => -f x) (-f') x",
+        "hypotheses": [
+          "f : \u211d \u2192 \u211d",
+          "f' x : \u211d",
+          "hf : HasDerivAt f f' x"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "have hf' := hf.neg\nassumption",
+        "nodes_expanded": 25,
+        "elapsed_seconds": 162.13928427081555,
+        "error": ""
+      },
+      {
+        "label": "hasDerivAt_differentiableAt",
+        "theorem": "DifferentiableAt \u211d f x",
+        "hypotheses": [
+          "f : \u211d \u2192 \u211d",
+          "f' x : \u211d",
+          "hf : HasDerivAt f f' x"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "exact hf.differentiableAt",
+        "nodes_expanded": 24,
+        "elapsed_seconds": 156.33995770849288,
+        "error": ""
+      },
+      {
+        "label": "hasDerivAt_deriv",
+        "theorem": "deriv f x = f'",
+        "hypotheses": [
+          "f : \u211d \u2192 \u211d",
+          "f' x : \u211d",
+          "hf : HasDerivAt f f' x"
+        ],
+        "difficulty": "medium",
+        "success": true,
+        "proof": "apply HasDerivAt.deriv\nexact hf",
+        "nodes_expanded": 26,
+        "elapsed_seconds": 158.2930420106277,
+        "error": ""
+      },
+      {
+        "label": "tendsto_const",
+        "theorem": "Filter.Tendsto (fun _ => c) l (nhds c)",
+        "hypotheses": [
+          "c : \u211d",
+          "l : Filter \u211d"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "exact tendsto_const_nhds",
+        "nodes_expanded": 17,
+        "elapsed_seconds": 149.179482081905,
+        "error": ""
+      },
+      {
+        "label": "tendsto_of_continuousAt",
+        "theorem": "Filter.Tendsto f (nhds x) (nhds (f x))",
+        "hypotheses": [
+          "f : \u211d \u2192 \u211d",
+          "x : \u211d",
+          "hf : ContinuousAt f x"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "apply Filter.Tendsto.comp\nexact hf\napply Filter.tendsto_id",
+        "nodes_expanded": 24,
+        "elapsed_seconds": 149.9899183185771,
+        "error": ""
+      },
+      {
+        "label": "tendsto_add",
+        "theorem": "Filter.Tendsto (fun x => f x + g x) l (nhds (a + b))",
+        "hypotheses": [
+          "f g : \u211d \u2192 \u211d",
+          "l : Filter \u211d",
+          "a b : \u211d",
+          "hf : Filter.Tendsto f l (nhds a)",
+          "hg : Filter.Tendsto g l (nhds b)"
+        ],
+        "difficulty": "medium",
+        "success": true,
+        "proof": "apply Filter.Tendsto.add hf hg",
+        "nodes_expanded": 26,
+        "elapsed_seconds": 153.39541867375374,
+        "error": ""
+      }
+    ]
+  },
+  "qlora_finetuned": {
+    "model": "models/pretrained/deepseek-prover-v1.5-rl",
+    "adapter": "models/finetuned/deepseek-qlora-calculus/best",
+    "success": 11,
+    "total": 24,
+    "success_rate": 0.4583333333333333,
+    "results": [
+      {
+        "label": "continuous_const",
+        "theorem": "Continuous (fun _ : \u211d => c)",
+        "success": true,
+        "proof": "fun_prop",
+        "elapsed_seconds": 216.0173543309793
+      },
+      {
+        "label": "continuous_id",
+        "theorem": "Continuous (id : \u211d \u2192 \u211d)",
+        "success": true,
+        "proof": "fun_prop",
+        "elapsed_seconds": 155.07083741109818
+      },
+      {
+        "label": "continuous_add",
+        "theorem": "Continuous (fun x => f x + g x)",
+        "success": true,
+        "proof": "fun_prop",
+        "elapsed_seconds": 157.31113381125033
+      },
+      {
+        "label": "continuous_mul",
+        "theorem": "Continuous (fun x => f x * g x)",
+        "success": true,
+        "proof": "fun_prop",
+        "elapsed_seconds": 155.9938500840217
+      },
+      {
+        "label": "continuous_comp",
+        "theorem": "Continuous (f \u2218 g)",
+        "success": true,
+        "proof": "fun_prop",
+        "elapsed_seconds": 157.350933464244
+      },
+      {
+        "label": "continuous_neg",
+        "theorem": "Continuous (fun x => -f x)",
+        "success": false,
+        "proof": null,
+        "elapsed_seconds": 156.83786424715072
+      },
+      {
+        "label": "continuousAt_of_continuous",
+        "theorem": "ContinuousAt f x",
+        "success": true,
+        "proof": "fun_prop",
+        "elapsed_seconds": 157.84227663092315
+      },
+      {
+        "label": "continuousAt_const",
+        "theorem": "ContinuousAt (fun _ : \u211d => c) x",
+        "success": true,
+        "proof": "fun_prop",
+        "elapsed_seconds": 156.38952355645597
+      },
+      {
+        "label": "differentiable_const",
+        "theorem": "Differentiable \u211d (fun _ : \u211d => c)",
+        "success": true,
+        "proof": "fun_prop",
+        "elapsed_seconds": 156.8061631238088
+      },
+      {
+        "label": "differentiable_id",
+        "theorem": "Differentiable \u211d (id : \u211d \u2192 \u211d)",
+        "success": true,
+        "proof": "simp[differentiable_id']",
+        "elapsed_seconds": 146.7398144574836
+      },
+      {
+        "label": "differentiable_add",
+        "theorem": "Differentiable \u211d (fun x => f x + g x)",
+        "success": false,
+        "proof": null,
+        "elapsed_seconds": 157.02985407132655
+      },
+      {
+        "label": "differentiable_neg",
+        "theorem": "Differentiable \u211d (fun x => -f x)",
+        "success": false,
+        "proof": null,
+        "elapsed_seconds": 156.32073991186917
+      },
+      {
+        "label": "differentiable_comp",
+        "theorem": "Differentiable \u211d (f \u2218 g)",
+        "success": true,
+        "proof": "simpaonly[mul_one]usinghf.mulhg1",
+        "elapsed_seconds": 156.69951920211315
+      },
+      {
+        "label": "differentiable_mul",
+        "theorem": "Differentiable \u211d (fun x => f x * g x)",
+        "success": false,
+        "proof": null,
+        "elapsed_seconds": 157.1876376569271
+      },
+      {
+        "label": "hasDerivAt_const",
+        "theorem": "HasDerivAt (fun _ => c) 0 x",
+        "success": false,
+        "proof": null,
+        "elapsed_seconds": 156.78849969711155
+      },
+      {
+        "label": "hasDerivAt_id",
+        "theorem": "HasDerivAt id 1 x",
+        "success": false,
+        "proof": null,
+        "elapsed_seconds": 156.03086660057306
+      },
+      {
+        "label": "hasDerivAt_add",
+        "theorem": "HasDerivAt (fun x => f x + g x) (f' + g') x",
+        "success": false,
+        "proof": null,
+        "elapsed_seconds": 159.04822115972638
+      },
+      {
+        "label": "hasDerivAt_const_mul",
+        "theorem": "HasDerivAt (fun x => c * f x) (c * f') x",
+        "success": false,
+        "proof": null,
+        "elapsed_seconds": 161.39076446089894
+      },
+      {
+        "label": "hasDerivAt_neg",
+        "theorem": "HasDerivAt (fun x => -f x) (-f') x",
+        "success": false,
+        "proof": null,
+        "elapsed_seconds": 160.6123994057998
+      },
+      {
+        "label": "hasDerivAt_differentiableAt",
+        "theorem": "DifferentiableAt \u211d f x",
+        "success": true,
+        "proof": "exact(hf.differentiableAt)",
+        "elapsed_seconds": 158.10933499969542
+      },
+      {
+        "label": "hasDerivAt_deriv",
+        "theorem": "deriv f x = f'",
+        "success": false,
+        "proof": null,
+        "elapsed_seconds": 158.2919281926006
+      },
+      {
+        "label": "tendsto_const",
+        "theorem": "Filter.Tendsto (fun _ => c) l (nhds c)",
+        "success": false,
+        "proof": null,
+        "elapsed_seconds": 158.72545237932354
+      },
+      {
+        "label": "tendsto_of_continuousAt",
+        "theorem": "Filter.Tendsto f (nhds x) (nhds (f x))",
+        "success": false,
+        "proof": null,
+        "elapsed_seconds": 160.4563029864803
+      },
+      {
+        "label": "tendsto_add",
+        "theorem": "Filter.Tendsto (fun x => f x + g x) l (nhds (a + b))",
+        "success": false,
+        "proof": null,
+        "elapsed_seconds": 164.87075635790825
+      }
+    ]
+  }
+}

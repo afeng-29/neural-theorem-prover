@@ -1,0 +1,1412 @@
+{
+  "n_theorems": 24,
+  "timeout": 300.0,
+  "top_k": 32,
+  "model_type": "deepseek",
+  "finetuned": {
+    "model": "models/pretrained/deepseek-prover-v1.5-rl",
+    "success": 22,
+    "total": 24,
+    "success_rate": 0.9166666666666666,
+    "results": [
+      {
+        "label": "continuous_const",
+        "theorem": "Continuous (fun _ : \u211d => c)",
+        "hypotheses": [
+          "c : \u211d"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "exact continuous_const",
+        "nodes_expanded": 12,
+        "elapsed_seconds": 63.86357516888529,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "exact continuous_const",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "continuity",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "apply continuous_const\nset_option linter.uppercaseCheck false in\nset_option linter.lowercaseCheck false in\nset_option linter.nestedUnions false in",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "apply continuous_const",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "rw [continuous_iff_continuousAt]\nintro x\napply continuousAt_const\n<;> simp [continuous_iff_continuousAt]\n<;> apply continuousAt_const\n<;> simp [continuous_iff_continuousAt]\n<;> apply continuousAt_const\n<;> simp [continuous_iff_continuousAt]\n<;> apply continuousAt_const\n<;> simp [continuous_iff_continuousAt]\n<;> apply continuousAt_const\n<;> simp [continuous_iff_continuousAt]\n<;> apply continuousAt_const\n<;> simp [continuous_iff_continuousAt]\n<;> apply continuousAt_const\n<;> simp [continuous_iff_continuousAt]\n<;> apply continuousAt_const\n<;> simp [continuous_iff_continuousAt]\n<;> apply continuousAt_const\n<;> simp [continuous_iff_continuousAt]\n<;> apply continuousAt_const\n<;> simp [",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "exact continuous_const",
+            "elaboration": "complete"
+          },
+          {
+            "tactic": "continuity",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "apply continuous_const\nset_option linter.uppercaseCheck false in\nset_option linter.lowercaseCheck false in\nset_option linter.nestedUnions false in",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "apply continuous_const",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "rw [continuous_iff_continuousAt]\nintro x\napply continuousAt_const\n<;> simp [continuous_iff_continuousAt]\n<;> apply continuousAt_const\n<;> simp [continuous_iff_continuousAt]\n<;> apply continuousAt_const\n<;> simp [continuous_iff_continuousAt]\n<;> apply continuousAt_const\n<;> simp [continuous_iff_continuousAt]\n<;> apply continuousAt_const\n<;> simp [continuous_iff_continuousAt]\n<;> apply continuousAt_const\n<;> simp [continuous_iff_continuousAt]\n<;> apply continuousAt_const\n<;> simp [continuous_iff_continuousAt]\n<;> apply continuousAt_const\n<;> simp [continuous_iff_continuousAt]\n<;> apply continuousAt_const\n<;> simp [continuous_iff_continuousAt]\n<;> apply continuousAt_const\n<;> simp [",
+            "elaboration": "unknown"
+          }
+        ]
+      },
+      {
+        "label": "continuous_id",
+        "theorem": "Continuous (id : \u211d \u2192 \u211d)",
+        "hypotheses": [],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "rw [continuous_iff_continuousAt]\nintro x\nexact continuousAt_id\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp",
+        "nodes_expanded": 20,
+        "elapsed_seconds": 51.92567050457001,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "rw [continuous_iff_continuousAt]\nintro x\nexact continuousAt_id\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "apply continuous_iff_continuousAt.2\nintro x\nexact continuousAt_id",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "apply continuous_id",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "continuityintrox_14",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "continuity",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "rw [continuous_iff_continuousAt]\nintro x\nexact continuousAt_id\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp\n<;> aesop\n<;> simp",
+            "elaboration": "complete"
+          },
+          {
+            "tactic": "apply continuous_iff_continuousAt.2\nintro x\nexact continuousAt_id",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "apply continuous_id",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "continuityintrox_14",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "continuity",
+            "elaboration": "unknown"
+          }
+        ]
+      },
+      {
+        "label": "continuous_add",
+        "theorem": "Continuous (fun x => f x + g x)",
+        "hypotheses": [
+          "f g : \u211d \u2192 \u211d",
+          "hf : Continuous f",
+          "hg : Continuous g"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "continuity",
+        "nodes_expanded": 13,
+        "elapsed_seconds": 54.16116905491799,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "continuity",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "apply Continuous.add\nexact hf\nexact hg",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "apply Continuous.add hf hg\n1 Like",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "apply Continuous.add\nassumption\nassumption",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "apply Continuous.add hf hg",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "continuity",
+            "elaboration": "complete"
+          },
+          {
+            "tactic": "apply Continuous.add\nexact hf\nexact hg",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "apply Continuous.add hf hg\n1 Like",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "apply Continuous.add\nassumption\nassumption",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "apply Continuous.add hf hg",
+            "elaboration": "unknown"
+          }
+        ]
+      },
+      {
+        "label": "continuous_mul",
+        "theorem": "Continuous (fun x => f x * g x)",
+        "hypotheses": [
+          "f g : \u211d \u2192 \u211d",
+          "hf : Continuous f",
+          "hg : Continuous g"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "continuity",
+        "nodes_expanded": 16,
+        "elapsed_seconds": 53.69022683892399,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "exact hf.mul hg\n`",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "continuity",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "exact hf.mul hg",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "apply Continuous.mul\nassumption\nassumption\n<;> assumption",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "apply Continuous.mul\nassumption\nassumption",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "exact hf.mul hg\n`",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "continuity",
+            "elaboration": "complete"
+          },
+          {
+            "tactic": "exact hf.mul hg",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "apply Continuous.mul\nassumption\nassumption\n<;> assumption",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "apply Continuous.mul\nassumption\nassumption",
+            "elaboration": "unknown"
+          }
+        ]
+      },
+      {
+        "label": "continuous_comp",
+        "theorem": "Continuous (f \u2218 g)",
+        "hypotheses": [
+          "f g : \u211d \u2192 \u211d",
+          "hf : Continuous f",
+          "hg : Continuous g"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "continuity",
+        "nodes_expanded": 22,
+        "elapsed_seconds": 53.14121644757688,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "applyContinuous.comp hf hg",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "intro x\nexact (hf x).mul (hg x)",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "exact hf.mul hg",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "continuity",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "have hf' : Continuous f := hf\nhave hg' : Continuous g := hg\nexact Continuous.mul hf' hg'",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "applyContinuous.comp hf hg",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "intro x\nexact (hf x).mul (hg x)",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "exact hf.mul hg",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "continuity",
+            "elaboration": "complete"
+          },
+          {
+            "tactic": "have hf' : Continuous f := hf\nhave hg' : Continuous g := hg\nexact Continuous.mul hf' hg'",
+            "elaboration": "unknown"
+          }
+        ]
+      },
+      {
+        "label": "continuous_neg",
+        "theorem": "Continuous (fun x => -f x)",
+        "hypotheses": [
+          "f : \u211d \u2192 \u211d",
+          "hf : Continuous f"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "continuity",
+        "nodes_expanded": 19,
+        "elapsed_seconds": 53.324589846655726,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "continuity",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "intro x\napply Continuous.neg\nexact hf x",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "exact Continuous.comp continuous_neg hf",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "intro x\napply ContinuousAt.comp\napply ContinuousAt.neg\nexact hf.continuousAt\napply ContinuousAt.comp\nexact continuous_id.continuousAt\nexact hf.continuousAt\n<;> simp",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "apply Continuous.neg\nassumption",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "continuity",
+            "elaboration": "complete"
+          },
+          {
+            "tactic": "intro x\napply Continuous.neg\nexact hf x",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "exact Continuous.comp continuous_neg hf",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "intro x\napply ContinuousAt.comp\napply ContinuousAt.neg\nexact hf.continuousAt\napply ContinuousAt.comp\nexact continuous_id.continuousAt\nexact hf.continuousAt\n<;> simp",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "apply Continuous.neg\nassumption",
+            "elaboration": "unknown"
+          }
+        ]
+      },
+      {
+        "label": "continuousAt_of_continuous",
+        "theorem": "ContinuousAt f x",
+        "hypotheses": [
+          "f : \u211d \u2192 \u211d",
+          "hf : Continuous f",
+          "x : \u211d"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "rw [ContinuousAt]\nexact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.continuousAt\n<;> exact hf.",
+        "nodes_expanded": 26,
+        "elapsed_seconds": 52.675206715241075,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "apply ContinuousAt.congr\nexact hf.continuousAt",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "rw [continuousAt_iff_continuous_left'_right']\nintro x' hx'\nsimp at hx'\nsimp [hx']\n<;> linarith",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "apply ContinuousAt.congr hf",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "rw [ContinuousAt]\nintro s hs\naesop",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "rw [ContinuousAt]\nintro s hs\nexact hf.continuousAt hs\n<;>\naesop\n<;>\naesop\n<;\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "apply ContinuousAt.congr\nexact hf.continuousAt",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "rw [continuousAt_iff_continuous_left'_right']\nintro x' hx'\nsimp at hx'\nsimp [hx']\n<;> linarith",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "apply ContinuousAt.congr hf",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "rw [ContinuousAt]\nintro s hs\naesop",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "rw [ContinuousAt]\nintro s hs\nexact hf.continuousAt hs\n<;>\naesop\n<;>\naesop\n<;\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop\n<;>\naesop",
+            "elaboration": "error"
+          }
+        ]
+      },
+      {
+        "label": "continuousAt_const",
+        "theorem": "ContinuousAt (fun _ : \u211d => c) x",
+        "hypotheses": [
+          "c x : \u211d"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "apply continuousAt_const",
+        "nodes_expanded": 14,
+        "elapsed_seconds": 52.22705701831728,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "continuity",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "continuity\nOpen a fresh namespace to avoid name clashes with other declarations.",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "rw [ContinuousAt]\nintro s hs\nsimp at hs\ntauto",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "continuity\nf'(x) = 4x\n\\]\nf'(2) = 4 \\cdot 2 = 8",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "applyContinuousAt_const\nIn summary, the",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "continuity",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "continuity\nOpen a fresh namespace to avoid name clashes with other declarations.",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "rw [ContinuousAt]\nintro s hs\nsimp at hs\ntauto",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "continuity\nf'(x) = 4x\n\\]\nf'(2) = 4 \\cdot 2 = 8",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "applyContinuousAt_const\nIn summary, the",
+            "elaboration": "error"
+          }
+        ]
+      },
+      {
+        "label": "differentiable_const",
+        "theorem": "Differentiable \u211d (fun _ : \u211d => c)",
+        "hypotheses": [
+          "c : \u211d"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "apply differentiable_const",
+        "nodes_expanded": 21,
+        "elapsed_seconds": 52.019093598239124,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "applyDifferentiable.const\napply Differentiable.const",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "apply differentiable_const",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "applyDifferentiableAt.const",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "apply differentiable_const\ndone",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "applyDifferentiable.const",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "applyDifferentiable.const\napply Differentiable.const",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "apply differentiable_const",
+            "elaboration": "complete"
+          },
+          {
+            "tactic": "applyDifferentiableAt.const",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "apply differentiable_const\ndone",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "applyDifferentiable.const",
+            "elaboration": "unknown"
+          }
+        ]
+      },
+      {
+        "label": "differentiable_id",
+        "theorem": "Differentiable \u211d (id : \u211d \u2192 \u211d)",
+        "hypotheses": [],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "apply differentiable_id",
+        "nodes_expanded": 22,
+        "elapsed_seconds": 51.280832023359835,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "apply differentiable_id",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "apply differentiable_id\n<;> simp\n<;> norm_num\n<;> apply differentiable_at_id\n<;> simp\n<;> norm_num\n<;> apply differentiable_at_id\n<;> simp\n<;> norm_num\n<;> apply differentiable_at_id\n<;> simp\n<;> norm_num\n<;> apply differentiable_at_id\n<;> simp\n<;> norm_num\n<;> apply differentiable_at_id\n<;> simp\n<;> norm_num\n<;> apply differentiable_at_id\n<;> simp\n<;> norm_num\n<;> apply differentiable_at_id\n<;> simp\n<;> norm_num\n<;> apply differentiable_at_id\n<;> simp\n<;> norm_num\n<;> apply differentiable_at_id\n<;> simp\n<;> norm_num",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "apply differentiable_id\n`",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "applyDifferentiable.idopenAddTorsor\nf'(x_0) = f'(0) = \\lim_{h \\to 0} \\frac{f(0 + h) - f(0)}{h} = \\lim_{h \\to 0} \\frac{0 + h - 0}{h} = \\lim_{h \\to 0} \\frac{h}{h} = 1\n\\]",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "apply differentiable_id\n<;> simp_all\n<;> decide\n<;> apply differentiable_id\n<;> simp_all\n<;> decide\n<;> apply differentiable_id\n<;> simp_all\n<;> decide\n<;> apply differentiable_id\n<;> simp_all\n<;> decide\n<;> apply differentiable_id\n<;> simp_all\n<;> decide\n<;> apply differentiable_id\n<;> simp_all\n<;> decide\n<;> apply differentiable_id\n<;> simp_all\n<;> decide\n<;> apply differentiable_id\n<;> simp_all\n<;> decide\n<;> apply differentiable_id\n<;> simp_all\n<;> decide\n<;> apply differentiable_id\n<;> simp_all\n<;> decide\n<;> apply differentiable_id\n<;> simp_all",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "apply differentiable_id",
+            "elaboration": "complete"
+          },
+          {
+            "tactic": "apply differentiable_id\n<;> simp\n<;> norm_num\n<;> apply differentiable_at_id\n<;> simp\n<;> norm_num\n<;> apply differentiable_at_id\n<;> simp\n<;> norm_num\n<;> apply differentiable_at_id\n<;> simp\n<;> norm_num\n<;> apply differentiable_at_id\n<;> simp\n<;> norm_num\n<;> apply differentiable_at_id\n<;> simp\n<;> norm_num\n<;> apply differentiable_at_id\n<;> simp\n<;> norm_num\n<;> apply differentiable_at_id\n<;> simp\n<;> norm_num\n<;> apply differentiable_at_id\n<;> simp\n<;> norm_num\n<;> apply differentiable_at_id\n<;> simp\n<;> norm_num",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "apply differentiable_id\n`",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "applyDifferentiable.idopenAddTorsor\nf'(x_0) = f'(0) = \\lim_{h \\to 0} \\frac{f(0 + h) - f(0)}{h} = \\lim_{h \\to 0} \\frac{0 + h - 0}{h} = \\lim_{h \\to 0} \\frac{h}{h} = 1\n\\]",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "apply differentiable_id\n<;> simp_all\n<;> decide\n<;> apply differentiable_id\n<;> simp_all\n<;> decide\n<;> apply differentiable_id\n<;> simp_all\n<;> decide\n<;> apply differentiable_id\n<;> simp_all\n<;> decide\n<;> apply differentiable_id\n<;> simp_all\n<;> decide\n<;> apply differentiable_id\n<;> simp_all\n<;> decide\n<;> apply differentiable_id\n<;> simp_all\n<;> decide\n<;> apply differentiable_id\n<;> simp_all\n<;> decide\n<;> apply differentiable_id\n<;> simp_all\n<;> decide\n<;> apply differentiable_id\n<;> simp_all\n<;> decide\n<;> apply differentiable_id\n<;> simp_all",
+            "elaboration": "unknown"
+          }
+        ]
+      },
+      {
+        "label": "differentiable_add",
+        "theorem": "Differentiable \u211d (fun x => f x + g x)",
+        "hypotheses": [
+          "f g : \u211d \u2192 \u211d",
+          "hf : Differentiable \u211d f",
+          "hg : Differentiable \u211d g"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "apply Differentiable.add hf hg",
+        "nodes_expanded": 15,
+        "elapsed_seconds": 52.871356680989265,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "apply Differentiable.add hf hg",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "exact hf.add hg",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "applyDifferentiable.addhfhg",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "apply Differentiable.add\nexact hf\nexact hg",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "apply Differentiable.add\nassumption\nassumption",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "apply Differentiable.add hf hg",
+            "elaboration": "complete"
+          },
+          {
+            "tactic": "exact hf.add hg",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "applyDifferentiable.addhfhg",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "apply Differentiable.add\nexact hf\nexact hg",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "apply Differentiable.add\nassumption\nassumption",
+            "elaboration": "unknown"
+          }
+        ]
+      },
+      {
+        "label": "differentiable_neg",
+        "theorem": "Differentiable \u211d (fun x => -f x)",
+        "hypotheses": [
+          "f : \u211d \u2192 \u211d",
+          "hf : Differentiable \u211d f"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "apply Differentiable.neg\nassumption",
+        "nodes_expanded": 30,
+        "elapsed_seconds": 53.84237468801439,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "refine' hf.congr fun x => _\nsimp",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "simp_all only [Differentiable, funext]\napply hf.neg",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "applyDifferentiable.neg(hf)",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "applyDifferentiable.neg",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "simpa only [Differentiable] using hf.comp differentiable_id\n<;> apply differentiable_id\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "refine' hf.congr fun x => _\nsimp",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "simp_all only [Differentiable, funext]\napply hf.neg",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "applyDifferentiable.neg(hf)",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "applyDifferentiable.neg",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "simpa only [Differentiable] using hf.comp differentiable_id\n<;> apply differentiable_id\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp\n<;> assumption\n<;> simp",
+            "elaboration": "error"
+          }
+        ]
+      },
+      {
+        "label": "differentiable_comp",
+        "theorem": "Differentiable \u211d (f \u2218 g)",
+        "hypotheses": [
+          "f g : \u211d \u2192 \u211d",
+          "hf : Differentiable \u211d f",
+          "hg : Differentiable \u211d g"
+        ],
+        "difficulty": "medium",
+        "success": false,
+        "proof": null,
+        "nodes_expanded": 26,
+        "elapsed_seconds": 52.82825996540487,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "a.e. apply Differentiable.mul <;> assumption",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "applyDifferentiable.mul(hf)\nThe `funext` theorem takes two arguments:",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "applyDifferentiable.mul\nassumption\nassumption",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "intro x\nsimp only [DifferentiableAt, fderiv_fg, hf.differentiableAt, hg.differentiableAt, exists_prop]\ntauto",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "apply Differentiable.mul <;> assumption",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "a.e. apply Differentiable.mul <;> assumption",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "applyDifferentiable.mul(hf)\nThe `funext` theorem takes two arguments:",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "applyDifferentiable.mul\nassumption\nassumption",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "intro x\nsimp only [DifferentiableAt, fderiv_fg, hf.differentiableAt, hg.differentiableAt, exists_prop]\ntauto",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "apply Differentiable.mul <;> assumption",
+            "elaboration": "error"
+          }
+        ]
+      },
+      {
+        "label": "differentiable_mul",
+        "theorem": "Differentiable \u211d (fun x => f x * g x)",
+        "hypotheses": [
+          "f g : \u211d \u2192 \u211d",
+          "hf : Differentiable \u211d f",
+          "hg : Differentiable \u211d g"
+        ],
+        "difficulty": "medium",
+        "success": true,
+        "proof": "apply Differentiable.mul\napply hf\napply hg",
+        "nodes_expanded": 22,
+        "elapsed_seconds": 53.95763820502907,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "applyDifferentiable.mulhfhg\nThe `differentiable.mul` function takes three arguments:",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "apply Differentiable.mul\napply hf\napply hg",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "apply Differentiable.mul <;> assumption",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "apply Differentiable.mul\nassumption\nassumption",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "applyDifferentiable.mul<;>assumption",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "applyDifferentiable.mulhfhg\nThe `differentiable.mul` function takes three arguments:",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "apply Differentiable.mul\napply hf\napply hg",
+            "elaboration": "complete"
+          },
+          {
+            "tactic": "apply Differentiable.mul <;> assumption",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "apply Differentiable.mul\nassumption\nassumption",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "applyDifferentiable.mul<;>assumption",
+            "elaboration": "unknown"
+          }
+        ]
+      },
+      {
+        "label": "hasDerivAt_const",
+        "theorem": "HasDerivAt (fun _ => c) 0 x",
+        "hypotheses": [
+          "x c : \u211d"
+        ],
+        "difficulty": "easy",
+        "success": false,
+        "proof": null,
+        "nodes_expanded": 27,
+        "elapsed_seconds": 52.459388544782996,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "simp_all",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "rw[hasDerivAt_const]",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "applyHasDerivAt.const c",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "apply HasDerivAt.const x c",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "hasDerivAt_const xc",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "simp_all",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "rw[hasDerivAt_const]",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "applyHasDerivAt.const c",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "apply HasDerivAt.const x c",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "hasDerivAt_const xc",
+            "elaboration": "error"
+          }
+        ]
+      },
+      {
+        "label": "hasDerivAt_id",
+        "theorem": "HasDerivAt id 1 x",
+        "hypotheses": [
+          "x : \u211d"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "apply hasDerivAt_id",
+        "nodes_expanded": 16,
+        "elapsed_seconds": 51.46628191508353,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "apply HasDerivAt.of_local_left_inverse\nexact {\nleft_inv := by intro x; simp\nright_inv := by intro x; simp\ncontinuousOn := by continuity\nopen_source := isOpen_univ\nopen_target := isOpen_univ\ncontinuousOn_inverse := by continuity\n}\nsimp\nnorm_num\n<;> aesop",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "apply HasDerivAt.id",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "apply hasDerivAt_id",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "applyhasDerivAt_id",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "applyHasDerivAt.id",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "apply HasDerivAt.of_local_left_inverse\nexact {\nleft_inv := by intro x; simp\nright_inv := by intro x; simp\ncontinuousOn := by continuity\nopen_source := isOpen_univ\nopen_target := isOpen_univ\ncontinuousOn_inverse := by continuity\n}\nsimp\nnorm_num\n<;> aesop",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "apply HasDerivAt.id",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "apply hasDerivAt_id",
+            "elaboration": "complete"
+          },
+          {
+            "tactic": "applyhasDerivAt_id",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "applyHasDerivAt.id",
+            "elaboration": "unknown"
+          }
+        ]
+      },
+      {
+        "label": "hasDerivAt_add",
+        "theorem": "HasDerivAt (fun x => f x + g x) (f' + g') x",
+        "hypotheses": [
+          "f g : \u211d \u2192 \u211d",
+          "f' g' x : \u211d",
+          "hf : HasDerivAt f f' x",
+          "hg : HasDerivAt g g' x"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "have h1 : HasDerivAt (fun x => f x + g x) (f' + g') x := HasDerivAt.add hf hg\nexact h1",
+        "nodes_expanded": 24,
+        "elapsed_seconds": 55.0669487323612,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "apply HasDerivAt.add hf hg\nexact h1",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "have h1 : HasDerivAt (fun x => f x + g x) (f' + g') x := HasDerivAt.add hf hg\nexact h1",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "applyHasDerivAt.add\napply hf\napply hg",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "convert hf.add hg using 1\nsimp [add_assoc, add_comm, add_left_comm]",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "apply HasDerivAt.add hf hg",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "apply HasDerivAt.add hf hg\nexact h1",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "have h1 : HasDerivAt (fun x => f x + g x) (f' + g') x := HasDerivAt.add hf hg\nexact h1",
+            "elaboration": "complete"
+          },
+          {
+            "tactic": "applyHasDerivAt.add\napply hf\napply hg",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "convert hf.add hg using 1\nsimp [add_assoc, add_comm, add_left_comm]",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "apply HasDerivAt.add hf hg",
+            "elaboration": "unknown"
+          }
+        ]
+      },
+      {
+        "label": "hasDerivAt_const_mul",
+        "theorem": "HasDerivAt (fun x => c * f x) (c * f') x",
+        "hypotheses": [
+          "f : \u211d \u2192 \u211d",
+          "f' x c : \u211d",
+          "hf : HasDerivAt f f' x"
+        ],
+        "difficulty": "medium",
+        "success": true,
+        "proof": "refine' hf.const_mul c",
+        "nodes_expanded": 26,
+        "elapsed_seconds": 54.99747274443507,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "refine' hf.const_mul c",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "intro x' hx'",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "apply HasDerivAt.const_mul\nexact hf",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "congrfunh1;simp_all\ng'(x) = \\frac",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "Complete the following Lean 4 code:",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "refine' hf.const_mul c",
+            "elaboration": "complete"
+          },
+          {
+            "tactic": "intro x' hx'",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "apply HasDerivAt.const_mul\nexact hf",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "congrfunh1;simp_all\ng'(x) = \\frac",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "Complete the following Lean 4 code:",
+            "elaboration": "unknown"
+          }
+        ]
+      },
+      {
+        "label": "hasDerivAt_neg",
+        "theorem": "HasDerivAt (fun x => -f x) (-f') x",
+        "hypotheses": [
+          "f : \u211d \u2192 \u211d",
+          "f' x : \u211d",
+          "hf : HasDerivAt f f' x"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "exact hf.neg",
+        "nodes_expanded": 25,
+        "elapsed_seconds": 56.118461032398045,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "simp only [neg_neg]\nconvert hf.neg using 1\next\nsimp",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "exact hf.neg",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "simp only [neg_sub_neg]\nconvert hf.neg\nsimp\n<;> aesop\n<;> aesop",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "simp only [neg_sub, sub_neg_eq_add, add_comm, neg_add_rev]\nconvert hf.neg\n<;> simp\n<;> convert hf.deriv.neg\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;>",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "simpa using hf.neg",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "simp only [neg_neg]\nconvert hf.neg using 1\next\nsimp",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "exact hf.neg",
+            "elaboration": "complete"
+          },
+          {
+            "tactic": "simp only [neg_sub_neg]\nconvert hf.neg\nsimp\n<;> aesop\n<;> aesop",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "simp only [neg_sub, sub_neg_eq_add, add_comm, neg_add_rev]\nconvert hf.neg\n<;> simp\n<;> convert hf.deriv.neg\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;> simp\n<;>",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "simpa using hf.neg",
+            "elaboration": "unknown"
+          }
+        ]
+      },
+      {
+        "label": "hasDerivAt_differentiableAt",
+        "theorem": "DifferentiableAt \u211d f x",
+        "hypotheses": [
+          "f : \u211d \u2192 \u211d",
+          "f' x : \u211d",
+          "hf : HasDerivAt f f' x"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "apply HasDerivAt.differentiableAt\nexact hf",
+        "nodes_expanded": 27,
+        "elapsed_seconds": 53.51729093492031,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "refine' differentiableAt_of_deriv_ne_zero (fun h => _)\nsimp_all",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "infer_instance",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "apply Differentiable.differentiableAt",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "apply HasDerivAt.differentiableAt\nexact hf",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "applyhf.differentiableAt\nDifferentiableAt.of_hasDerivAtDifferentiableAt",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "refine' differentiableAt_of_deriv_ne_zero (fun h => _)\nsimp_all",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "infer_instance",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "apply Differentiable.differentiableAt",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "apply HasDerivAt.differentiableAt\nexact hf",
+            "elaboration": "complete"
+          },
+          {
+            "tactic": "applyhf.differentiableAt\nDifferentiableAt.of_hasDerivAtDifferentiableAt",
+            "elaboration": "unknown"
+          }
+        ]
+      },
+      {
+        "label": "hasDerivAt_deriv",
+        "theorem": "deriv f x = f'",
+        "hypotheses": [
+          "f : \u211d \u2192 \u211d",
+          "f' x : \u211d",
+          "hf : HasDerivAt f f' x"
+        ],
+        "difficulty": "medium",
+        "success": true,
+        "proof": "have hderiv := hf.deriv\nrw [hderiv]\n<;> rfl",
+        "nodes_expanded": 22,
+        "elapsed_seconds": 53.18629753123969,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "rw [deriv_eq_f'_of_has_deriv_at hf]\n<;> rfl",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "simp[deriv_eq_of_has_derivAt hf]",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "rw [deriv_eq_f'] at hf\nderiv_eq_f' (deriv_eq_f' x)\n<;> simp\n<;> exact hf",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "(intro hf; simp_all)\nset_option maxHeartbeats 400000",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "introhx;rw[deriv_eq_iff_has_deriv_at.2hx]",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "rw [deriv_eq_f'_of_has_deriv_at hf]\n<;> rfl",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "simp[deriv_eq_of_has_derivAt hf]",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "rw [deriv_eq_f'] at hf\nderiv_eq_f' (deriv_eq_f' x)\n<;> simp\n<;> exact hf",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "(intro hf; simp_all)\nset_option maxHeartbeats 400000",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "introhx;rw[deriv_eq_iff_has_deriv_at.2hx]",
+            "elaboration": "error"
+          }
+        ]
+      },
+      {
+        "label": "tendsto_const",
+        "theorem": "Filter.Tendsto (fun _ => c) l (nhds c)",
+        "hypotheses": [
+          "c : \u211d",
+          "l : Filter \u211d"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "apply tendsto_const_nhds",
+        "nodes_expanded": 23,
+        "elapsed_seconds": 53.26323167607188,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "apply Filter.Tendsto.const_c",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "apply Filter.Tendsto.const\nFilter.tendsto_infFilter.tendsto_principalFilter.tendsto_inf",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "applyFilter.Tendsto.const_nhd;simp",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "apply tendsto_const_nhds",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "simp only [tendsto_iff_forall_eventually_mem, eventually_nhds_iff]",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "apply Filter.Tendsto.const_c",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "apply Filter.Tendsto.const\nFilter.tendsto_infFilter.tendsto_principalFilter.tendsto_inf",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "applyFilter.Tendsto.const_nhd;simp",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "apply tendsto_const_nhds",
+            "elaboration": "complete"
+          },
+          {
+            "tactic": "simp only [tendsto_iff_forall_eventually_mem, eventually_nhds_iff]",
+            "elaboration": "unknown"
+          }
+        ]
+      },
+      {
+        "label": "tendsto_of_continuousAt",
+        "theorem": "Filter.Tendsto f (nhds x) (nhds (f x))",
+        "hypotheses": [
+          "f : \u211d \u2192 \u211d",
+          "x : \u211d",
+          "hf : ContinuousAt f x"
+        ],
+        "difficulty": "easy",
+        "success": true,
+        "proof": "apply Filter.Tendsto.comp\nexact hf\nexact Filter.tendsto_id",
+        "nodes_expanded": 23,
+        "elapsed_seconds": 54.01817660685629,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "applytendsto_iff_forall_eventually_mem.2\nintro s hs\nexact hf _ hs",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "apply Filter.Tendsto.comp (hf)\napply tendsto_id",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "apply Filter.Tendsto.comp\ncase hf' =>\nexact hf\ncase hg' =>\napply Filter.Tendsto.id",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "rw [tendsto_iff_seq_tendsto]\nintro xn hxn\nsimp at h\nexact h",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "intro x' hx'\nsimp at hx'\nsimp [h x' hx']",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "applytendsto_iff_forall_eventually_mem.2\nintro s hs\nexact hf _ hs",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "apply Filter.Tendsto.comp (hf)\napply tendsto_id",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "apply Filter.Tendsto.comp\ncase hf' =>\nexact hf\ncase hg' =>\napply Filter.Tendsto.id",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "rw [tendsto_iff_seq_tendsto]\nintro xn hxn\nsimp at h\nexact h",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "intro x' hx'\nsimp at hx'\nsimp [h x' hx']",
+            "elaboration": "error"
+          }
+        ]
+      },
+      {
+        "label": "tendsto_add",
+        "theorem": "Filter.Tendsto (fun x => f x + g x) l (nhds (a + b))",
+        "hypotheses": [
+          "f g : \u211d \u2192 \u211d",
+          "l : Filter \u211d",
+          "a b : \u211d",
+          "hf : Filter.Tendsto f l (nhds a)",
+          "hg : Filter.Tendsto g l (nhds b)"
+        ],
+        "difficulty": "medium",
+        "success": true,
+        "proof": "apply Filter.Tendsto.add hf hg",
+        "nodes_expanded": 26,
+        "elapsed_seconds": 57.00031618028879,
+        "error": "",
+        "tactics_tried": [
+          {
+            "tactic": "constructor\nintro x hx\nsimp_all only [sub_eq_add_neg, add_assoc, add_left_comm, add_right_comm,\nadd_sub_cancel, add_sub_assoc, add_sub_cancel', sub_eq_add",
+            "log_prob": -0.0
+          },
+          {
+            "tactic": "apply Filter.Tendsto.add hf hg",
+            "log_prob": -1.0
+          },
+          {
+            "tactic": "intro x x_seq x_seq_conv\nrw[Function.comp_apply]\nhave hf' := hf (fun n => x n) x_seq x_seq_conv\nhave hg' := hg (fun n => x n) x_seq x_seq_conv\nsimp only [Function.comp_apply] at hf' hg'\nexact Filter.Tendsto.add hf' hg'",
+            "log_prob": -2.0
+          },
+          {
+            "tactic": "rw[Filter.Tendsto,Filter.tendsto_iff_forall_eventually_mem] at *\nintro s hs\napply Filter.eventually_mem_nhds.mpr",
+            "log_prob": -3.0
+          },
+          {
+            "tactic": "intro x x_seq\nsimp only [Function.comp_apply] at *\nexact tendsto_add hf' hg'",
+            "log_prob": -4.0
+          }
+        ],
+        "elaboration_results": [
+          {
+            "tactic": "constructor\nintro x hx\nsimp_all only [sub_eq_add_neg, add_assoc, add_left_comm, add_right_comm,\nadd_sub_cancel, add_sub_assoc, add_sub_cancel', sub_eq_add",
+            "elaboration": "error"
+          },
+          {
+            "tactic": "apply Filter.Tendsto.add hf hg",
+            "elaboration": "complete"
+          },
+          {
+            "tactic": "intro x x_seq x_seq_conv\nrw[Function.comp_apply]\nhave hf' := hf (fun n => x n) x_seq x_seq_conv\nhave hg' := hg (fun n => x n) x_seq x_seq_conv\nsimp only [Function.comp_apply] at hf' hg'\nexact Filter.Tendsto.add hf' hg'",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "rw[Filter.Tendsto,Filter.tendsto_iff_forall_eventually_mem] at *\nintro s hs\napply Filter.eventually_mem_nhds.mpr",
+            "elaboration": "unknown"
+          },
+          {
+            "tactic": "intro x x_seq\nsimp only [Function.comp_apply] at *\nexact tendsto_add hf' hg'",
+            "elaboration": "unknown"
+          }
+        ]
+      }
+    ]
+  }
+}

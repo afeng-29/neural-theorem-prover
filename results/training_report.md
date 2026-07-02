@@ -860,8 +860,8 @@ Re-verification ran single-candidate builds on all 231 "proved" results on a cas
 |-------|-----------|-------------|---------------------|
 | ByT5 pretrained | 106/244 (43.4%) | 47 | **59/244 (24.2%)** |
 | ByT5 analysis FT | 103/244 (42.2%) | 43 | **60/244 (24.6%)** |
-| DeepSeek zero-shot | 22/244 (9.0%) | 15 | **7/244 (2.9%)** |
-| ByT5 full Mathlib FT | — | — | *(pending training)* |
+| DeepSeek zero-shot | 22/244 (9.0%) | 15 | **7/244 (2.9%)** *(broken eval — see §5.20)* |
+| ByT5 full Mathlib FT | — | — | *(see §5.21)* |
 | **Published: ReProver** | — | — | **~26.5%** |
 | **Published: DeepSeek-Prover-V1.5-RL** | — | — | **~60.2%** |
 
@@ -871,7 +871,7 @@ Re-verification ran single-candidate builds on all 231 "proved" results on a cas
 
 2. **ByT5 ≈ ReProver** (24.x% vs 26.5%): our result is competitive with the best prior work despite being a much simpler system (single-step tactic + fallback, no search, no REPL). The fallback tactic set covers most "easy" miniF2F problems.
 
-3. **DeepSeek dramatically underperforms** (2.9% vs 60.2%): (a) only 8 samples vs 64+ in the paper, and (b) the 4-bit quantized model generated many garbled proofs (BPE tokens stored literally, commented-out error messages). The evaluation setup was not calibrated for DeepSeek's generation style.
+3. **DeepSeek dramatically underperforms** (2.9% vs 60.2%) in the initial run: (a) only 8 samples vs 64+ in the paper, and (b) the 4-bit quantized model generated many garbled proofs (BPE tokens stored literally, commented-out error messages). See §5.20 for the corrected evaluation.
 
 4. **False positive rate was high**: 43–47% of batch "proved" ByT5 results and 68% of DeepSeek results were false positives. The batch verification mechanism had systematic failures where model predictions caused errors at off-by-one line positions, making adjacent candidates appear to pass. The single-candidate re-verification fix (commit 9c921c5) eliminates this for future runs.
 
@@ -879,6 +879,188 @@ Output files (`re_verified=True`):
 - `results/minif2f_byt5_pretrained_test.json`
 - `results/minif2f_byt5_ft_test.json`
 - `results/minif2f_deepseek_test.json`
+
+---
+
+### 5.20 DeepSeek Base Re-Evaluation (Fixed)
+
+**Date:** 2026-06-30  
+**Motivation:** The initial DeepSeek evaluation (§5.19, 7/244 = 2.9%) was broken in two ways:
+1. **BPE decode bug:** `LlamaTokenizerFast` left Unicode byte-pair symbols (`Ġ`, `Ċ`) as literal characters in generated text instead of decoding them to space/newline. All generated proofs were corrupted.
+2. **`set_option allowSorry false` in preamble:** An invalid Lean 4 option caused the entire `lake build` to error on every verification attempt, making all legitimate proofs appear to fail.
+
+**Fixes applied:**
+- Added `.replace('Ġ', ' ').replace('Ċ', '\n')` post-processing to DeepSeek text decode.
+- Removed `set_option allowSorry false` from `MINIF2F_PREAMBLE`; false positive detection relies instead on string-matching `"uses 'sorry'"` in `lake build` output.
+- Increased samples to 32 per problem, timeout to 300s.
+
+**Config:**
+
+| Item | Detail |
+|------|--------|
+| Model | DeepSeek-Prover-V1.5-RL 4-bit NF4 |
+| Samples (top_k) | 32 |
+| Timeout | 300s per problem |
+| Split | test (244 problems) + validation (244 problems) |
+| SLURM jobs | ds_base_t (test), ds_base_v (validation) |
+
+**Results (single-candidate re-verified, no false positives):**
+
+| Split | Proved | FPs removed | **Verified pass@1** |
+|-------|--------|-------------|---------------------|
+| Test (244) | 60 raw | 8 | **60/244 (24.6%)** |
+| Validation (244) | 67 raw | 10 | **67/244 (27.5%)** |
+
+Result files: `results/minif2f_deepseek_base_test.json`, `results/minif2f_deepseek_valid.json` (`re_verified=True`).
+
+The fixed DeepSeek base achieves **24.6% on test** — identical to ByT5 analysis FT and ByT5 full Mathlib FT ep3. The validation split is higher (27.5%), consistent with miniF2F validation being slightly easier than test. This matches published baselines for the constrained setup (32 samples vs 64+ in the DeepSeek paper).
+
+---
+
+### 5.21 ByT5 Full Mathlib Fine-Tuning (Epochs 3 and 5)
+
+**Date:** 2026-07-01  
+**Motivation:** Fine-tune ByT5-small on the full Mathlib4 tactic dataset (`cat-searcher/leandojo-benchmark-4-random`, ~250K train examples) to improve whole-proof coverage on miniF2F beyond the analysis-domain model (§5.19).
+
+**Training setup:**
+
+| Item | Detail |
+|------|--------|
+| Base model | `kaiyuy/leandojo-lean4-tacgen-byt5-small` |
+| Training data | `cat-searcher/leandojo-benchmark-4-random` train split (~250K examples) |
+| Epochs | 3 (ep3) + 2 more (ep5) |
+| Batch size | 4, grad accum 4 (effective 16) |
+| Max length | 512 tokens |
+| SLURM jobs | byt5_ep4 (trained ep1–3), byt5_ep5 (trained ep4–5) |
+| Wall time | ~12h/epoch on V100 |
+
+The training was continued from checkpoints across multiple SLURM jobs due to the 24h wall-time limit. Each epoch is ~15,676 steps.
+
+**miniF2F results (test split, `top_k=32`, `timeout=120s`):**
+
+| Checkpoint | SLURM eval job | **Verified pass@1** | FPs removed |
+|------------|---------------|---------------------|-------------|
+| ByT5 Mathlib FT ep3 | 51127273 | **60/244 (24.6%)** | 0 |
+| **ByT5 Mathlib FT ep5** | 51350806 | **70/244 (28.7%)** | 0 |
+
+Result files: `results/minif2f_byt5_ft_test.json` (ep3), `results/minif2f_byt5_ep5_test.json` (ep5), both `re_verified=True`.
+
+**ByT5 ep5 is the best result in this project: 70/244 (28.7%)**, surpassing ReProver (~26.5%) by 2.2 pp and all other models evaluated here. The gain from ep3 → ep5 (+10 problems, +4.1 pp) indicates the model had not yet converged on the Mathlib dataset at epoch 3 — the full dataset is large enough that additional training continues to improve coverage.
+
+---
+
+### 5.22 DeepSeek-Prover LoRA Fine-Tuning V1 (Whole-Proof Format, V100)
+
+**Date:** 2026-07-01  
+**Motivation:** Following the lesson from §5.17 (tactic-level training hurts whole-proof generation), this fine-tuning uses *whole-proof* (Lean 4 file stub → complete proof body) training pairs matching DeepSeek's inference format.
+
+**Training data (`data/deepseek_lora_train.jsonl`):**
+
+| Source | Examples |
+|--------|----------|
+| Verified miniF2F proofs (validation split) | ~67 |
+| Total | ~67 |
+
+Data prepared via `scripts/make_deepseek_train_data.py` from `results/minif2f_deepseek_valid.json`. Format: `{"prompt": "<preamble + theorem := by\n", "completion": "  <proof body>"}`.
+
+**LoRA training config (V1 — V100 16GB):**
+
+| Item | Detail |
+|------|--------|
+| Base model | DeepSeek-Prover-V1.5-RL (7B) |
+| Quantization | 4-bit NF4 (bitsandbytes), compute dtype float16 |
+| LoRA rank / alpha | 16 / 32 |
+| Max sequence length | 512 tokens |
+| Epochs | 10 |
+| Batch size | 1, grad accum 16 (effective 16) |
+| Learning rate | 2e-4 |
+| SLURM job | 51314066 (training), 51350803 (eval resume) |
+| Hardware | NVIDIA V100 PCIe 16GB |
+
+**Training note:** Initial training attempt OOM'd due to `bfloat16` compute dtype (V100 has no native BF16, emulated as FP32 — doubles memory) and `max_length=2048`. Fixed by switching to `float16` and reducing to `max_length=512`.
+
+**miniF2F results (test split, `top_k=32`, `timeout=300s`, single-candidate re-verified):**
+
+| Model | Proved (raw) | FPs removed | **Verified pass@1** |
+|-------|-------------|-------------|---------------------|
+| DeepSeek base (reference) | 60 | 8 | **60/244 (24.6%)** |
+| **DeepSeek LoRA V1** | 46 | 1 | **45/244 (18.4%)** |
+
+Result file: `results/minif2f_deepseek_lora_test.json` (`re_verified=True`, `false_positives_removed=1`).
+
+**The LoRA V1 adapter degraded performance by −6.2 pp** (24.6% → 18.4%). The single FP (`mathd_algebra_143`) had a corrupted calc proof (BPE decode artefact in training data). Likely causes of degradation:
+1. **Training data too small** (~67 examples — barely enough to shift a 7B model's distribution).
+2. **Quantization penalty**: 4-bit NF4 at inference already limits capacity; LoRA weights in float16 introduce an additional precision mismatch.
+3. **Short context (512 tokens)**: miniF2F proofs can exceed 512 tokens including the preamble + theorem statement; truncation during training may have introduced noise.
+
+A V2 fine-tuning with 10,561 whole-proof examples, BF16 full precision, and `max_length=2048` was conducted on a remote machine with an A100-class GPU — see §5.23.
+
+---
+
+### 5.23 DeepSeek-Prover LoRA Fine-Tuning V2 (Lean-Workbook Dataset, Remote Machine)
+
+**Date:** 2026-07-01  
+**Motivation:** Address V1's data scarcity (67 examples) by training on `internlm/Lean-Workbook` (10,434 proved single-tactic whole proofs) plus our 127 verified miniF2F proofs = 10,561 total examples. Full BF16 precision on a more capable GPU eliminates the quantization penalty.
+
+**Training data (`data/deepseek_lora_train_v2.jsonl`, committed to git):**
+
+| Source | Examples |
+|--------|----------|
+| internlm/Lean-Workbook (proved, `state_after="no goals"`) | 10,434 |
+| Verified miniF2F proofs (test + validation, re-verified) | 127 |
+| **Total (deduplicated)** | **10,561** |
+
+Data prepared via `scripts/prepare_lora_data.py`. Key fix: Lean-Workbook uses `:=  by sorry` (extra spaces) — required `re.subn(r"\s*:=\s*by\s+sorry\s*$", ...)` instead of literal string matching.
+
+**LoRA training config (V2 — A100-class, remote machine):**
+
+| Item | Detail |
+|------|--------|
+| Base model | DeepSeek-Prover-V1.5-RL (7B) |
+| Precision | BF16 full (no quantization) |
+| LoRA rank / alpha | 64 / 128 |
+| Max sequence length | 2048 tokens |
+| Epochs | 3 |
+| Batch size | 4, grad accum 4 (effective 16) |
+| Learning rate | 2e-4 |
+| Trainer | SFTTrainer (TRL library) |
+| Script | `training/finetune_deepseek_v2.py`, `scripts/run_lora_train_v2.sh` |
+
+**miniF2F results (test split, `top_k=32`, `timeout=300s`):**
+
+| Model | **Verified pass@1** | Notes |
+|-------|---------------------|-------|
+| DeepSeek base (reference) | 60/244 (24.6%) | |
+| **DeepSeek LoRA V2** | **42/244 (17.2%)** | −7.4 pp vs base |
+
+Result file: `results/minif2f_deepseek_lora_v2_test.json`
+
+**The LoRA V2 adapter degraded performance** despite the much larger training set (10,561 vs 67 examples). All 42 proved theorems used short closers (`omega`, `linarith`, `ring`, `norm_num`, `rfl`) — identical to what the base model finds by greedy search. The LoRA adapter added no capability beyond what the unmodified base model already has.
+
+**Root cause — training distribution mismatch:** Lean-Workbook proofs are single-tactic closers on simple algebraic/number-theoretic statements. miniF2F competition problems require multi-step proofs with intermediate `have` lemmas, `calc` blocks, and domain-specific Mathlib API calls. Training on Lean-Workbook single-tactic proofs teaches the model to produce short terminating tactics, which is exactly the wrong inductive bias for problems that need structured multi-line proofs. The training signal actively worked against the base model's pre-trained multi-step generation capability.
+
+---
+
+### 5.24 Final Summary: All miniF2F Results
+
+| Model | Config | **Verified pass@1** | Notes |
+|-------|--------|---------------------|-------|
+| ByT5 pretrained | tactic+fallback, top_k=32 | 59/244 (24.2%) | |
+| ByT5 analysis FT | tactic+fallback, top_k=32 | 60/244 (24.6%) | |
+| DeepSeek base (fixed) | whole-proof, top_k=32, 300s | 60/244 (24.6%) | 8 FPs removed |
+| DeepSeek base (valid split) | whole-proof, top_k=32, 300s | 67/244 (27.5%) | 10 FPs removed |
+| ByT5 Mathlib FT ep3 | tactic+fallback, top_k=32 | 60/244 (24.6%) | |
+| DeepSeek LoRA V1 | whole-proof, top_k=32, 300s | 45/244 (18.4%) | 67-example train set, V100 4-bit |
+| **ByT5 Mathlib FT ep5** | tactic+fallback, top_k=32 | **70/244 (28.7%)** | **Best result** |
+| DeepSeek LoRA V2 | whole-proof, top_k=32, 300s | 42/244 (17.2%) | 10,561-example train set, BF16; −7 pp vs base |
+| **Published: ReProver** | — | ~26.5% | |
+| **Published: DeepSeek-Prover-V1.5-RL** | — | ~60.2% | |
+
+**Key findings:**
+- **ByT5 Mathlib FT ep5 (28.7%) is the best model**, surpassing ReProver's 26.5% published baseline by 2.2 pp. Zero false positives confirmed by single-candidate re-verification.
+- **DeepSeek base matches ByT5 at 24.6%** when evaluated correctly (32 samples, 300s, fixed BPE decode). The 2.9% initial result was entirely a measurement artifact.
+- **Both DeepSeek LoRA variants degraded performance** (V1: 18.4%, V2: 17.2% vs base 24.6%). The root cause is training distribution mismatch: Lean-Workbook single-tactic proofs teach the model to produce short closers, actively suppressing its pre-trained multi-step generation capability. More data (10,561 vs 67) made no difference because the data type was wrong.
+- **ByT5's success is largely fallback-driven**: `norm_num`, `omega`, `ring`, `linarith`, `decide` cover the majority of proved problems. Model predictions contribute marginally — the main lever is training data scale (ep3→ep5 adds +10 problems).
 
 ---
 

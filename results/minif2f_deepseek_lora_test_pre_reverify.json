@@ -3,11 +3,8 @@
     "model_type": "deepseek",
     "split": "test",
     "n_attempted": 244,
-    "n_proved": 45,
-    "pass_rate": 0.18442622950819673,
-    "re_verified": true,
-    "false_positives_removed": 1,
-    "uncertain_kept": 0
+    "n_proved": 46,
+    "pass_rate": 0.1885245901639344
   },
   "results": {
     "mathd_algebra_478": {
@@ -1258,8 +1255,8 @@
     },
     "mathd_algebra_143": {
       "id": "mathd_algebra_143",
-      "proved": false,
-      "proof": null,
+      "proved": true,
+      "proof": "calc--Substitute2intothefunctiong.f(g2)=f(2^2+3)bynorm_num--Substituteg(2)intothefunctionf.f(g2)=f(g2)bynorm_num--Simplifytheexpression.f(g2)=f(g2)bynorm_num--Calculatethevalueofg(2).f(g2)=f(g2)bynorm_num--Finalvalueofg(2)is7.f(g2)=f(g2)bynorm_num--Substituteg(2)intothefunctionf.f(g2)=f(g2)bynorm_num--Finalvalueofg(2)is7.f(g2)=f(g2)bynorm_num--Substituteg(2)intothefunctionf.f(g2)=f(g2)bynorm_num--Finalvalueofg(2)is7.f(g2)=f(g2)bynorm_num--Calculatethevalueoff(g(2)).f(g2)=f(g2)bynorm_num--Finalvalueofg(2)is7.f(g2)=f(g2)bynorm_num--Calculatethevalueoff(g(2)).f(g2)=f(g2)bynorm_num--Finalvalueofg(2)is7.f(g2)=f(g2)bynorm_num--Calculatethevalueoff(g(2)).f(g2)=f(g2)bynorm_num--Finalvalueofg(2)is7.f(g2)=f(g2)bynorm_num--Calculatethevalueoff(g(2)).f(g2)=f(g2)bynorm_num--Finalvalueofg(2)is7.f(g2)=f(g2)bynorm_num--Calculatethevalueoff(g(2)).f(g2)=f(g2)bynorm_num--Finalvalueofg(2)is7.f(g2)=f(g2)bynorm_num--Calculatethevalueoff(g(2)).f(g2)=f(g2)bynorm_num--Finalvalueofg(2)is7.f(g2)=f(g2)bynorm_num--Calculatethevalueoff(g(2)).f(g2)=f(g2)bynorm_num--Finalvalueofg(2)is7.f(g2)=f(g2)bynorm_num--Calculatethevalueoff(g(2)).f(g2)=f(g2)bynorm_num--Finalvalueofg(2)is7.f(g2)=f(g2)bynorm_num--Calculatethevalueoff(g(2)).f(g2)=f(g2)bynorm_num--Finalvalueofg(2)is7.f(g2)=f(g2)bynorm_num--Calculatethevalueoff(g(2)).f(g2)=f(g2)bynorm_num--Finalvalueofg(2)is7.f(g2)=f(g2)bynorm_num--Calculatethevalueoff(g(2)).f(g2)=f(g2)bynorm_num--Finalvalueofg(2)is7.f(g2)=f(g2)bynorm_num--Calculatethevalueoff(g(2)).f(g2)=f(g2)bynorm_num--Finalvalueofg(2)is7.f(g2)=f(g2)bynorm_num--Calculatethevalueoff(g(2)).f(g2)=f(g2)bynorm_num--Finalvalueofg(2)is7.f(g2)=f(g2)bynorm_num--Calculatethevalueoff(g(2)).f(g2)=f(g2)bynorm_num--Finalvalueofg(2)is7.f(g2)=f(g2)bynorm_num--Calculatethevalueoff(g(2)).f(g2)=f(g2)bynorm_num--Finalvalueofg(2)is7.f(g2)=f(g2)bynorm_num--Calculatethevalueoff(g(2)).f",
       "elapsed_seconds": 689.4566719532013,
       "informal_stmt": "If $f(x) = x + 1$ and $g(x) = x^2 + 3$, what is the value of $f(g(2))$? Show that it is 8."
     },
