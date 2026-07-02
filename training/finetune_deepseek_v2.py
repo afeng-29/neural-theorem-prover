@@ -26,9 +26,7 @@ def load_jsonl(path: str):
         for line in f:
             rec = json.loads(line)
             # Concatenate prompt + completion as the "text" field for SFTTrainer
-            records.append({"text": rec["prompt"] + rec["completion"],
-                             "prompt": rec["prompt"],
-                             "id": rec.get("id", "")})
+            records.append({"text": rec["prompt"] + rec["completion"]})
     return records
 
 
@@ -58,12 +56,20 @@ def main():
         tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.padding_side = "right"
 
-    # Model loading
+    # Model loading — force single GPU to avoid TRL chunked-CE device mismatch
+    # SGE allocates 1 GPU but may not restrict CUDA_VISIBLE_DEVICES, so we
+    # pin everything to cuda:0 (the first visible/allocated device).
+    import os
+    if torch.cuda.is_available() and "CUDA_VISIBLE_DEVICES" not in os.environ:
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+        logger.info("Pinned to cuda:0 (CUDA_VISIBLE_DEVICES not set by SGE)")
+
     use_bf16 = not args.no_bf16 and torch.cuda.is_bf16_supported()
     compute_dtype = torch.bfloat16 if use_bf16 else torch.float16
     logger.info("Compute dtype: %s (BF16 supported: %s)", compute_dtype, torch.cuda.is_bf16_supported())
 
-    model_kwargs = {"trust_remote_code": True, "device_map": "auto"}
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    model_kwargs = {"trust_remote_code": True, "device_map": {"": device}}
     if args.load_in_4bit:
         logger.info("Loading model in 4-bit NF4")
         model_kwargs["quantization_config"] = BitsAndBytesConfig(
@@ -115,7 +121,7 @@ def main():
         save_total_limit=2,
         dataloader_num_workers=4,
         report_to="none",
-        max_seq_length=args.max_length,
+        max_length=args.max_length,
         # Train only on completion tokens (mask the prompt)
         dataset_text_field="text",
         packing=False,
@@ -126,7 +132,7 @@ def main():
         args=training_args,
         train_dataset=dataset,
         peft_config=lora_cfg,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
     )
 
     trainer.model.print_trainable_parameters()

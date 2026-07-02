@@ -375,7 +375,7 @@ class DeepSeekProverModel:
         self.lora_adapter = lora_adapter  # path to saved PEFT LoRA adapter dir
         self._model = None
         self._tokenizer = None
-        self._generate_batch = 8  # adaptive: reduced on OOM, persists across goals
+        self._generate_batch = 8  # A40 has 47.6GB VRAM; 7B model uses 14GB, plenty for batch=8
 
     def _ensure_loaded(self):
         if self._model is not None:
@@ -391,7 +391,9 @@ class DeepSeekProverModel:
         if self.load_in_4bit:
             kwargs["quantization_config"] = BitsAndBytesConfig(load_in_4bit=True)
         else:
-            kwargs["dtype"] = torch.float16  # V100 supports fp16; bfloat16 needs Ampere+
+            # Model config specifies bfloat16; float16 overflows on this model's weight
+            # magnitudes and produces NaN logits during sampling.
+            kwargs["dtype"] = torch.bfloat16
 
         self._model = AutoModelForCausalLM.from_pretrained(self.model_id, **kwargs)
 
@@ -399,6 +401,8 @@ class DeepSeekProverModel:
             from peft import PeftModel
             logger.info("Loading LoRA adapter from %s", self.lora_adapter)
             self._model = PeftModel.from_pretrained(self._model, self.lora_adapter)
+            if not self.load_in_4bit:
+                self._model = self._model.to(torch.bfloat16)
 
         self._model.eval()
         n = sum(p.numel() for p in self._model.parameters())
