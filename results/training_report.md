@@ -941,11 +941,12 @@ The training was continued from checkpoints across multiple SLURM jobs due to th
 | Checkpoint | SLURM eval job | **Verified pass@1** | FPs removed |
 |------------|---------------|---------------------|-------------|
 | ByT5 Mathlib FT ep3 | 51127273 | **60/244 (24.6%)** | 0 |
-| **ByT5 Mathlib FT ep5** | 51350806 | **70/244 (28.7%)** | 0 |
+| ByT5 Mathlib FT ep5 | 51350806 | **70/244 (28.7%)** | 0 |
+| **ByT5 Mathlib FT ep6** | 51390970 | **70/244 (28.7%)** | 0 |
 
-Result files: `results/minif2f_byt5_ft_test.json` (ep3), `results/minif2f_byt5_ep5_test.json` (ep5), both `re_verified=True`.
+Result files: `results/minif2f_byt5_ft_test.json` (ep3), `results/minif2f_byt5_ep5_test.json` (ep5), `results/minif2f_byt5_ep6_test.json` (ep6), all `re_verified=True`.
 
-**ByT5 ep5 is the best result in this project: 70/244 (28.7%)**, surpassing ReProver (~26.5%) by 2.2 pp and all other models evaluated here. The gain from ep3 → ep5 (+10 problems, +4.1 pp) indicates the model had not yet converged on the Mathlib dataset at epoch 3 — the full dataset is large enough that additional training continues to improve coverage.
+**ByT5 ep5 and ep6 both achieve 70/244 (28.7%) — confirmed plateau**, surpassing ReProver (~26.5%) by 2.2 pp and all other models evaluated here. The gain from ep3 → ep5 (+10 problems, +4.1 pp) indicates the model had not yet converged on the Mathlib dataset at epoch 3 — the full dataset is large enough that additional training continues to improve coverage.
 
 ---
 
@@ -1051,13 +1052,14 @@ Result file: `results/minif2f_deepseek_lora_v2_test.json` (`re_verified=True`). 
 | DeepSeek base (valid split) | whole-proof, top_k=32, 300s | 67/244 (27.5%) | 10 FPs removed |
 | ByT5 Mathlib FT ep3 | tactic+fallback, top_k=32 | 60/244 (24.6%) | |
 | DeepSeek LoRA V1 | whole-proof, top_k=32, 300s | 45/244 (18.4%) | 67-example train set, V100 4-bit |
-| **ByT5 Mathlib FT ep5** | tactic+fallback, top_k=32 | **70/244 (28.7%)** | **Best result** |
+| ByT5 Mathlib FT ep5 | tactic+fallback, top_k=32 | **70/244 (28.7%)** | Best result |
+| ByT5 Mathlib FT ep6 | tactic+fallback, top_k=32 | **70/244 (28.7%)** | Plateau confirmed; 2 problems differ from ep5 |
 | DeepSeek LoRA V2 | whole-proof, top_k=32, 300s | 41/244 (16.8%) | 10,561-example train set, BF16; −7.8 pp vs base |
 | **Published: ReProver** | — | ~26.5% | |
 | **Published: DeepSeek-Prover-V1.5-RL** | — | ~60.2% | |
 
 **Key findings:**
-- **ByT5 Mathlib FT ep5 (28.7%) is the best model**, surpassing ReProver's 26.5% published baseline by 2.2 pp. Zero false positives confirmed by single-candidate re-verification.
+- **ByT5 Mathlib FT ep5/ep6 (28.7%) is the best result**, confirmed at a plateau, surpassing ReProver's 26.5% published baseline by 2.2 pp. Zero false positives confirmed by single-candidate re-verification.
 - **DeepSeek base matches ByT5 at 24.6%** when evaluated correctly (32 samples, 300s, fixed BPE decode). The 2.9% initial result was entirely a measurement artifact.
 - **Both DeepSeek LoRA variants degraded performance** (V1: 18.4%, V2: 17.2% vs base 24.6%). The root cause is training distribution mismatch: Lean-Workbook single-tactic proofs teach the model to produce short closers, actively suppressing its pre-trained multi-step generation capability. More data (10,561 vs 67) made no difference because the data type was wrong.
 - **ByT5's success is largely fallback-driven**: `norm_num`, `omega`, `ring`, `linarith`, `decide` cover the majority of proved problems. Model predictions contribute marginally — the main lever is training data scale (ep3→ep5 adds +10 problems).
