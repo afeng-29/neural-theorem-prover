@@ -32,6 +32,18 @@ lean_project/results/
 *.log
 lean4repl_debug.txt
 
+# SGE job log files
+*.e[0-9]*
+*.o[0-9]*
+*.pe[0-9]*
+*.po[0-9]*
+
+# Python venv
+venv/
+
+# Results checkpoints (large JSON — gitignored, use RESULTS.md for summary)
+results/
+
 # Secrets — never commit tokens
 .env
 *.token

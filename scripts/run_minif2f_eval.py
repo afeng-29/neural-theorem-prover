@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -106,17 +107,28 @@ def verify_candidates(
         elan_bin = Path.home() / ".elan" / "bin"
         env = {**os.environ, "PATH": f"{elan_bin}:{os.environ.get('PATH', '')}"}
 
-        result = subprocess.run(
+        proc = subprocess.Popen(
             ["lake", "build", "TheoremProver"],
             cwd=lean_project,
-            capture_output=True, text=True,
-            timeout=timeout, env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            env=env,
+            start_new_session=True,  # new process group so killpg kills lean children too
         )
-        output = result.stdout + result.stderr
+        try:
+            raw_out, raw_err = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                proc.kill()
+            proc.communicate()
+            logger.warning("lake build timed out after %ds", timeout)
+            return [False] * len(candidates)
+        output = raw_out.decode(errors="replace") + raw_err.decode(errors="replace")
 
         # Lean 4 error recovery can insert sorry implicitly (producing exit 0 + warning,
         # not an error). Reject any build that uses sorry even without a compile error.
-        if result.returncode == 0 and "error:" not in output.lower() and "uses 'sorry'" not in output:
+        if proc.returncode == 0 and "error:" not in output.lower() and "uses 'sorry'" not in output:
             return [True] * len(candidates)
 
         error_lines: set[int] = set()
@@ -132,9 +144,6 @@ def verify_candidates(
             results.append(not any(start <= ln <= end for ln in error_lines))
         return results
 
-    except subprocess.TimeoutExpired:
-        logger.warning("lake build timed out after %ds", timeout)
-        return [False] * len(candidates)
     except Exception as e:
         logger.warning("lake build error: %s", e)
         return [False] * len(candidates)
@@ -218,6 +227,17 @@ def deepseek_generate_from_formal(
     ).to(device)
     prompt_len = inputs["input_ids"].shape[1]
 
+    # Guard against NaN/Inf logits (can arise from 4-bit dequant on unusual token
+    # sequences like ≠-goal proofs) — clamp to uniform to avoid CUDA illegal-access hangs.
+    from transformers import LogitsProcessor
+    class _ClampNaN(LogitsProcessor):
+        def __call__(self, input_ids, scores):
+            bad = torch.isnan(scores) | torch.isinf(scores)
+            if bad.any():
+                logger.warning("NaN/Inf logits detected — clamping to uniform")
+                scores = scores.masked_fill(bad, 0.0)
+            return scores
+
     proofs: list[str] = []
     remaining = n
     while remaining > 0:
@@ -231,17 +251,19 @@ def deepseek_generate_from_formal(
                 top_p=top_p,
                 num_return_sequences=bs,
                 pad_token_id=model._tokenizer.eos_token_id,
+                logits_processor=[_ClampNaN()],
             )
         except torch.cuda.OutOfMemoryError:
             import gc
             gc.collect()
             torch.cuda.empty_cache()
-            if bs == 1:
-                logger.warning("OOM even with batch_size=1, aborting generation")
-                break
-            model._generate_batch = max(1, model._generate_batch // 2)
-            logger.warning("OOM: reducing batch_size to %d", model._generate_batch)
-            continue
+            torch.cuda.synchronize()
+            # Do NOT reduce batch size and retry — smaller batches (e.g. batch=8)
+            # hang in torch.multinomial on this cluster's CUDA config. Instead,
+            # return whatever proofs were collected so far and skip the rest.
+            logger.warning("OOM at batch_size=%d — aborting generation, returning %d proofs so far",
+                           bs, len(proofs))
+            break
         for seq in outputs:
             text = model._tokenizer.decode(seq[prompt_len:], skip_special_tokens=True)
             # LlamaTokenizerFast byte-level BPE: Ġ=space (U+0120), Ċ=newline (U+010A).
@@ -343,6 +365,22 @@ def run_eval(args):
     logger.info("Loading model: %s", args.model_type)
     model = _load_model(args)
 
+    # GPU warmup: fire one dummy generate to compile CUDA/BnB kernels before timed eval.
+    # Without this, the first real problem pays 10–20 min of JIT compilation silently.
+    if args.model_type == "deepseek" and hasattr(model, "_model") and model._model is not None:
+        import torch as _torch
+        _dev = next(model._model.parameters()).device
+        _warmup_ids = model._tokenizer("theorem foo : 1 + 1 = 2 := by\n  ",
+                                       return_tensors="pt").to(_dev)
+        logger.info("GPU warmup (dummy generate)...")
+        try:
+            with _torch.no_grad():
+                model._model.generate(**_warmup_ids, max_new_tokens=16, do_sample=False,
+                                      pad_token_id=model._tokenizer.eos_token_id)
+            logger.info("GPU warmup done")
+        except Exception as _e:
+            logger.warning("GPU warmup failed (non-fatal): %s", _e)
+
     results: dict = dict(done)
     n_proved = sum(1 for r in results.values() if r["proved"])
 
@@ -369,6 +407,13 @@ def run_eval(args):
         t0 = time.time()
         proved = False
         winning_proof = None
+
+        # Hard per-problem timeout: if generate() or lake build hangs, skip and continue.
+        _PROBLEM_TIMEOUT = 900  # 15 minutes max per problem
+        def _timeout_handler(sig, frame):
+            raise TimeoutError(f"problem timed out after {_PROBLEM_TIMEOUT}s")
+        _old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(_PROBLEM_TIMEOUT)
 
         try:
             if args.model_type == "deepseek":
@@ -402,8 +447,13 @@ def run_eval(args):
                             winning_proof = cand["proof_body"]
                             break
 
+        except TimeoutError as e:
+            logger.warning("TIMEOUT on %s after %ds — skipping", pid, _PROBLEM_TIMEOUT)
         except Exception as e:
             logger.warning("Error on %s: %s", pid, e)
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, _old_handler)
 
         # Re-verify any batch-reported proof with a single-candidate build to eliminate
         # false positives caused by multi-line predictions or other batch artifacts.
@@ -470,6 +520,13 @@ def _load_model(args):
             lora_adapter=args.lora_adapter,
         )
         model._ensure_loaded()
+        # batch=16 confirmed working in job 8742124. batch=8 hangs in torch.multinomial
+        # on this cluster's CUDA config. Stay at 16; on OOM, abort the problem (no retry).
+        n_params = sum(p.numel() for p in model._model.parameters())
+        if n_params < 5e9:  # quantized: ~3.9B params reported vs ~7B for BF16
+            model._generate_batch = 16
+            logger.info("4-bit model detected (%dM params): batch_size=%d",
+                        n_params // 1_000_000, model._generate_batch)
         return model
 
     else:  # byt5

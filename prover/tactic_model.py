@@ -375,49 +375,72 @@ class DeepSeekProverModel:
         self.lora_adapter = lora_adapter  # path to saved PEFT LoRA adapter dir
         self._model = None
         self._tokenizer = None
-        self._generate_batch = 4  # batch=8 OOMs even on 47.6GB A40 (KV cache for 32 heads × 8 seqs × 1024 tokens)
+        self._generate_batch = 4  # conservative default; bumped to 16 after 4-bit detection in eval scripts
 
     def _ensure_loaded(self):
         if self._model is not None:
             return
+        import time
+        import random
         from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+
+        # Transformers 5.x caching_allocator_warmup pre-allocates ~7GB on the GPU
+        # as a CUDA cache hint. On shared nodes the CUDA virtual address space is
+        # already fragmented by other processes, causing "CUDA driver error: out of
+        # memory" even when physical VRAM is ample. The warmup is purely a
+        # performance optimization; patching it to a no-op is safe.
+        try:
+            import transformers.modeling_utils as _tmu
+            if hasattr(_tmu, "caching_allocator_warmup"):
+                _tmu.caching_allocator_warmup = lambda *a, **kw: None
+        except Exception:
+            pass
 
         logger.info("Loading DeepSeek-Prover from %s on %s", self.model_id, self.device)
         self._tokenizer = AutoTokenizer.from_pretrained(
             self.model_id, trust_remote_code=True
         )
 
-        quantized = self.load_in_4bit
-        if self.load_in_4bit:
-            # 4-bit: must use device_map so BitsAndBytes can quantize per-device
-            kwargs: dict = {
-                "trust_remote_code": True, "device_map": "auto",
-                "quantization_config": BitsAndBytesConfig(load_in_4bit=True),
-            }
-            self._model = AutoModelForCausalLM.from_pretrained(self.model_id, **kwargs)
-        else:
-            # Load to CPU first (no device_map) to skip transformers 5.x
-            # caching_allocator_warmup, which tries to allocate ~7GB as a contiguous
-            # warmup block and fails on shared/busy GPU nodes.
-            self._model = AutoModelForCausalLM.from_pretrained(
-                self.model_id, trust_remote_code=True, dtype=torch.bfloat16,
+        # Shared GPU nodes often have CUDA VMA exhausted by other tenants even when
+        # 4-bit loading needs ~8GB free (3.5GB weights + BF16 embedding overhead).
+        # Empirically confirmed: job loaded successfully with 11GB free on researchgpu05.
+        NEED_GB = 8
+        SLEEP_S = 300  # 5 minutes between checks/retries
+
+        for wc in range(12):  # wait up to 1 hour (12 × 5 min)
+            if not torch.cuda.is_available():
+                break
+            free_mem, _ = torch.cuda.mem_get_info(0)
+            if free_mem >= NEED_GB * 1024 ** 3:
+                break
+            jitter = random.uniform(0, 30)
+            logger.info(
+                "%.1fGB GPU free < %dGB needed — sleeping %.0fs (wait %d/24)",
+                free_mem / 1024 ** 3, NEED_GB, SLEEP_S + jitter, wc + 1,
             )
-            cuda_dev = "cuda:0" if torch.cuda.is_available() else "cpu"
+            time.sleep(SLEEP_S + jitter)
+
+        quantized = False
+        for attempt in range(6):  # retry loading up to 6 times on GPU OOM
             try:
-                self._model = self._model.to(cuda_dev)
+                quantized = self._load_model_to_gpu(AutoModelForCausalLM, BitsAndBytesConfig)
+                break  # success
             except RuntimeError as e:
-                if "out of memory" not in str(e).lower():
+                _oom = ("out of memory" in str(e).lower()
+                        or "cuda driver error" in str(e).lower())
+                if not _oom or attempt >= 5:
                     raise
-                # GPU full (shared node) — fall back to 4-bit quantization (~3.5GB vs 14GB)
-                logger.warning("BF16 GPU load OOM — falling back to 4-bit quantization")
-                del self._model
+                if self._model is not None:
+                    del self._model
+                    self._model = None
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
-                self._model = AutoModelForCausalLM.from_pretrained(
-                    self.model_id, trust_remote_code=True, device_map="auto",
-                    quantization_config=BitsAndBytesConfig(load_in_4bit=True),
+                jitter = random.uniform(0, 60)
+                logger.warning(
+                    "GPU load failed (attempt %d/6): %s — retrying in %.0fs",
+                    attempt + 1, e, SLEEP_S + jitter,
                 )
-                quantized = True
+                time.sleep(SLEEP_S + jitter)
 
         if self.lora_adapter:
             from peft import PeftModel
@@ -429,6 +452,80 @@ class DeepSeekProverModel:
         self._model.eval()
         n = sum(p.numel() for p in self._model.parameters())
         logger.info("DeepSeek-Prover loaded (%.1fB parameters)", n / 1e9)
+
+    def _load_model_to_gpu(self, AutoModelForCausalLM, BitsAndBytesConfig) -> bool:
+        """Load model to GPU; returns True if 4-bit quantized, False if BF16."""
+        # Smoke-test: verify the CUDA allocator can service any allocation at all.
+        # Catches broken expandable_segments or CUDA context issues before the
+        # expensive model load attempt.
+        if torch.cuda.is_available():
+            try:
+                _t = torch.zeros(1024, device='cuda:0')
+                del _t
+                torch.cuda.empty_cache()
+            except RuntimeError as e:
+                raise RuntimeError(f"CUDA allocator smoke test failed ({e}); "
+                                   "GPU node may have broken CUDA context") from e
+
+        # Proactively skip BF16 (14GB) if GPU doesn't have 16GB free.
+        # Avoids failed .to("cuda") which can corrupt the CUDA context.
+        _use_4bit = self.load_in_4bit
+        if not _use_4bit and torch.cuda.is_available():
+            free_mem, _ = torch.cuda.mem_get_info(0)
+            if free_mem < 16 * 1024 ** 3:
+                logger.info(
+                    "%.1fGB GPU free < 16GB — using 4-bit directly",
+                    free_mem / 1024 ** 3,
+                )
+                _use_4bit = True
+
+        quantized = _use_4bit
+        if _use_4bit:
+            # device_map={"": 0}: all layers on GPU 0, no CPU spillover.
+            # BnB 4-bit needs ~3.5GB VRAM; transformers 4.x quantizes each layer
+            # before GPU placement so peak usage stays near that.
+            self._model = AutoModelForCausalLM.from_pretrained(
+                self.model_id, trust_remote_code=True,
+                device_map={"": 0},
+                quantization_config=BitsAndBytesConfig(load_in_4bit=True),
+            )
+        else:
+            # Load to CPU first, then move to GPU in one shot.
+            # In transformers 4.46.3 there is no caching_allocator_warmup.
+            self._model = AutoModelForCausalLM.from_pretrained(
+                self.model_id, trust_remote_code=True, torch_dtype=torch.bfloat16,
+            )
+            cuda_dev = "cuda:0" if torch.cuda.is_available() else "cpu"
+            try:
+                self._model = self._model.to(cuda_dev)
+            except RuntimeError as e:
+                _oom = ("out of memory" in str(e).lower()
+                        or "cuda driver error" in str(e).lower())
+                if not _oom:
+                    raise
+                # GPU filled up between check and .to() — fall to 4-bit
+                logger.warning("BF16 .to(cuda) failed — falling back to 4-bit")
+                del self._model
+                self._model = None
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+                self._model = AutoModelForCausalLM.from_pretrained(
+                    self.model_id, trust_remote_code=True,
+                    device_map={"": 0},
+                    quantization_config=BitsAndBytesConfig(load_in_4bit=True),
+                )
+                quantized = True
+
+        # Fail fast if model landed on CPU — inference would be 100-1000× slower
+        _dev = str(next(self._model.parameters()).device)
+        if _dev == "cpu":
+            raise RuntimeError(
+                "Model loaded onto CPU instead of GPU — GPU VMA likely exhausted. "
+                "Will retry after sleeping."
+            )
+        logger.info("Model device: %s", _dev)
+        return quantized
 
     def _build_prompt(self, theorem: str, hypotheses: list[str],
                       prior_tactics: list[str] | None = None) -> str:

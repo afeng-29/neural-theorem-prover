@@ -16,8 +16,8 @@ MODEL_PATH="models/pretrained/deepseek-prover-v1.5-rl"
 echo "=== [1/3] Lean toolchain ==="
 TOOLCHAIN=$(cat "$LEAN_PROJECT/lean-toolchain")
 elan toolchain install "$TOOLCHAIN" 2>/dev/null || true
-elan default "$TOOLCHAIN"
-lean --version
+elan default "$TOOLCHAIN" 2>/dev/null || true
+lean --version || true
 
 echo "=== [2/3] lake build ==="
 cd "$LEAN_PROJECT"
@@ -30,14 +30,15 @@ echo "Lean build OK"
 echo "=== [3/3] Eval: base model, top_k=64 ==="
 cd /user/af3698/neural-theorem-prover
 mkdir -p results
-export CUDA_LAUNCH_BLOCKING=1
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export PYTHONUNBUFFERED=1
 
-python3 scripts/run_minif2f_eval.py \
+nvidia-smi 2>/dev/null | grep -E "MiB|%|Driver" | head -5 || true
+
+python3 -u scripts/run_minif2f_eval.py \
     --model-type deepseek \
     --model-path "$MODEL_PATH" \
     --lean-project "$LEAN_PROJECT" \
-    --split test --top-k 64 --max-new-tokens 1024 \
+    --split test --top-k 64 --max-new-tokens 256 \
     --timeout 300 \
     --output results/minif2f_deepseek_base_topk64_test.json \
     --resume
