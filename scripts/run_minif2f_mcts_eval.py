@@ -119,12 +119,11 @@ def generate_whole_proofs(model, formal_statement: str, n: int, max_new_tokens: 
             import gc
             gc.collect()
             torch.cuda.empty_cache()
-            if bs == 1:
-                logger.warning("OOM even at batch_size=1, aborting generation")
-                break
-            model._generate_batch = max(1, model._generate_batch // 2)
-            logger.warning("OOM: reducing batch_size to %d", model._generate_batch)
-            continue
+            torch.cuda.synchronize()
+            # NEVER reduce to batch=8 — it deadlocks in torch.multinomial on CUDA 12.2.
+            # Abort and return whatever proofs were collected so far.
+            logger.warning("OOM at batch_size=%d — aborting generation", bs)
+            break
         for seq in outputs:
             text = model._tokenizer.decode(seq[prompt_len:], skip_special_tokens=True)
             text = text.replace("Ġ", " ").replace("Ċ", "\n")
@@ -194,14 +193,26 @@ def verify_whole_proofs(lean_project: Path, formal_statement: str, proof_bodies:
 
     try:
         goals_path.write_text(src)
-        result = subprocess.run(
+        proc = subprocess.Popen(
             ["lake", "build", "TheoremProver"],
-            cwd=lean_project, capture_output=True, text=True, timeout=120,
-            env=elan_env,
+            cwd=lean_project, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            env=elan_env, start_new_session=True,
         )
-        out = result.stdout + result.stderr
+        import signal as _sig
+        try:
+            raw_out, raw_err = proc.communicate(timeout=120)
+        except subprocess.TimeoutExpired:
+            try:
+                import os as _os
+                _os.killpg(proc.pid, _sig.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                proc.kill()
+            proc.communicate()
+            logger.warning("Whole-proof verify timed out")
+            return [False] * len(proof_bodies)
+        out = raw_out.decode(errors="replace") + raw_err.decode(errors="replace")
 
-        if result.returncode == 0 and "error:" not in out.lower():
+        if proc.returncode == 0 and "error:" not in out.lower() and "uses 'sorry'" not in out:
             return [True] * len(proof_bodies)
 
         error_lines: set[int] = set()
@@ -212,9 +223,6 @@ def verify_whole_proofs(lean_project: Path, formal_statement: str, proof_bodies:
             not any(s <= ln <= e for ln in error_lines)
             for s, e in ranges
         ]
-    except subprocess.TimeoutExpired:
-        logger.warning("Whole-proof verify timed out")
-        return [False] * len(proof_bodies)
     finally:
         if original is not None:
             goals_path.write_text(original)
@@ -255,14 +263,17 @@ def eval_problem(
         return {"id": problem["id"], "proved": False, "proof": None, "elapsed_seconds": elapsed}
 
     logger.info("  Phase 2: whole-proof sampling (up to %d samples)", args.samples)
-    batch = 32  # verify this many at a time
+    # Cap max_new_tokens at 256 for whole-proof: batch=16×256 tokens fits in ~7.5GB KV headroom.
+    # Longer sequences (2048) OOM at batch=16, and batch=8 deadlocks on CUDA 12.2.
+    whole_proof_max_tokens = min(args.max_new_tokens, 256)
+    batch = 16  # match model._generate_batch; verify 16 at a time for lake build stability
     samples_done = 0
     while samples_done < args.samples:
         if time.monotonic() - t_start > args.timeout:
             break
         n = min(batch, args.samples - samples_done)
         proofs = generate_whole_proofs(
-            model, formal, n=n, max_new_tokens=args.max_new_tokens,
+            model, formal, n=n, max_new_tokens=whole_proof_max_tokens,
         )
         samples_done += n
         if not proofs:

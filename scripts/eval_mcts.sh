@@ -18,8 +18,7 @@ source venv/bin/activate
 
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 export PATH="$HOME/.elan/bin:$PATH"
-export CUDA_LAUNCH_BLOCKING=1
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export PYTHONUNBUFFERED=1
 
 LEAN_PROJECT="$(pwd)/lean_project"
 MODEL_PATH="models/pretrained/deepseek-prover-v1.5-rl"
@@ -28,8 +27,8 @@ OUTPUT="results/minif2f_mcts_eval.json"
 echo "=== [1/3] Lean toolchain ==="
 TOOLCHAIN=$(cat "$LEAN_PROJECT/lean-toolchain")
 elan toolchain install "$TOOLCHAIN" 2>/dev/null || true
-elan default "$TOOLCHAIN"
-lean --version
+elan default "$TOOLCHAIN" 2>/dev/null || true
+lean --version || true
 
 echo "=== [2/3] lake build ==="
 cd "$LEAN_PROJECT"
@@ -43,13 +42,24 @@ echo "=== [3/3] MCTS + whole-proof eval ==="
 cd /user/af3698/neural-theorem-prover
 mkdir -p results
 
-python3 scripts/run_minif2f_mcts_eval.py \
+python3 -u -c "
+import torch
+if torch.cuda.is_available():
+    free, total = torch.cuda.mem_get_info(0)
+    print(f'GPU 0: {free/1024**3:.1f}GB free / {total/1024**3:.1f}GB total')
+    if free < 4 * 1024**3:
+        raise SystemExit(f'ERROR: only {free/1024**3:.1f}GB free on GPU 0, need 4GB')
+else:
+    raise SystemExit('ERROR: No CUDA device visible')
+"
+
+python3 -u scripts/run_minif2f_mcts_eval.py \
     --model-path "$MODEL_PATH" \
     --lean-project "$LEAN_PROJECT" \
     --split test \
     --output "$OUTPUT" \
     --samples 400 \
-    --max-new-tokens 2048 \
+    --max-new-tokens 256 \
     --timeout 300 \
     --tree-timeout 120 \
     --tree-width 8 \

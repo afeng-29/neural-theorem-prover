@@ -409,7 +409,8 @@ def run_eval(args):
         winning_proof = None
 
         # Hard per-problem timeout: if generate() or lake build hangs, skip and continue.
-        _PROBLEM_TIMEOUT = 900  # 15 minutes max per problem
+        # Scale with top_k: top_k=64 needs ~15min, top_k=256 needs ~25min.
+        _PROBLEM_TIMEOUT = max(900, args.top_k * 6)
         def _timeout_handler(sig, frame):
             raise TimeoutError(f"problem timed out after {_PROBLEM_TIMEOUT}s")
         _old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
@@ -417,21 +418,30 @@ def run_eval(args):
 
         try:
             if args.model_type == "deepseek":
-                proof_bodies = deepseek_generate_from_formal(
-                    model, formal, n=args.top_k,
-                    max_new_tokens=args.max_new_tokens,
-                )
-                if proof_bodies:
-                    candidates = [
-                        {"thm_name": f"{thm_name}_{i}", "formal_body": formal_body, "proof_body": pb}
-                        for i, pb in enumerate(proof_bodies)
-                    ]
-                    successes = verify_candidates(candidates, lean_project, timeout=args.timeout)
-                    for ok, cand in zip(successes, candidates):
-                        if ok:
-                            proved = True
-                            winning_proof = cand["proof_body"]
-                            break
+                # Stream-verify in chunks so large top_k values don't overflow one lake call.
+                # With top_k=64: 1 chunk of 64 (same as before). With top_k=256: 8 chunks of 32.
+                verify_chunk = getattr(args, "verify_batch", 32)
+                samples_done = 0
+                global_idx = 0
+                while samples_done < args.top_k and not proved:
+                    n_this = min(verify_chunk, args.top_k - samples_done)
+                    proof_bodies = deepseek_generate_from_formal(
+                        model, formal, n=n_this,
+                        max_new_tokens=args.max_new_tokens,
+                    )
+                    samples_done += n_this
+                    if proof_bodies:
+                        candidates = [
+                            {"thm_name": f"{thm_name}_{global_idx + i}", "formal_body": formal_body, "proof_body": pb}
+                            for i, pb in enumerate(proof_bodies)
+                        ]
+                        global_idx += len(proof_bodies)
+                        successes = verify_candidates(candidates, lean_project, timeout=args.timeout)
+                        for ok, cand in zip(successes, candidates):
+                            if ok:
+                                proved = True
+                                winning_proof = cand["proof_body"]
+                                break
 
             else:  # byt5-pretrained or byt5-ft
                 tactics = byt5_generate_tactics(model, formal, top_k=args.top_k)
@@ -555,6 +565,8 @@ def main():
                         help="Max tokens for DeepSeek generation")
     parser.add_argument("--timeout", type=int, default=300,
                         help="Seconds per lake build call")
+    parser.add_argument("--verify-batch", type=int, default=32,
+                        help="Candidates per lake build call (stream-verify for large top_k)")
     parser.add_argument("--output", required=True,
                         help="Output JSON path")
     parser.add_argument("--resume", action="store_true",
