@@ -216,7 +216,7 @@ def verify_whole_proofs(lean_project: Path, formal_statement: str, proof_bodies:
             return [True] * len(proof_bodies)
 
         error_lines: set[int] = set()
-        for m in re.finditer(r"error:.*?ProofGoals\.lean:(\d+):\d+:", out):
+        for m in re.finditer(r"ProofGoals\.lean:(\d+):\d+:.*?error:", out):
             error_lines.add(int(m.group(1)))
 
         return [

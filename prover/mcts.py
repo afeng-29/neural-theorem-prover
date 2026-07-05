@@ -169,12 +169,10 @@ class TreeSearchProver:
                 for node, tac in deduped
             ]
 
-            elapsed = time.monotonic() - t_start
-            remaining = max(10, self.tree_timeout - elapsed)
             verify_results = self._batch_verify_with_sorry(
                 base_stmt=base_stmt,
                 tactic_bodies=verify_bodies,
-                timeout=min(self.batch_timeout, int(remaining)),
+                timeout=self.batch_timeout,
             )
 
             for (node, tac), (valid, complete) in zip(deduped, verify_results):
@@ -256,13 +254,15 @@ class TreeSearchProver:
             out = result.stdout + result.stderr
 
             # Collect error lines (genuine Lean errors, not sorry-warnings)
+            # Lean format: "ProofGoals.lean:N:M: error: ..."
             error_lines: set[int] = set()
-            for m in re.finditer(r"error:.*?ProofGoals\.lean:(\d+):\d+:", out):
+            for m in re.finditer(r"ProofGoals\.lean:(\d+):\d+:.*?error:", out):
                 error_lines.add(int(m.group(1)))
 
             # Collect sorry-warning lines
+            # Lean format: "ProofGoals.lean:N:M: warning: declaration uses 'sorry'"
             sorry_lines: set[int] = set()
-            for m in re.finditer(r"warning:.*?ProofGoals\.lean:(\d+):\d+:.*sorry", out):
+            for m in re.finditer(r"ProofGoals\.lean:(\d+):\d+:.*?warning:.*sorry", out):
                 sorry_lines.add(int(m.group(1)))
 
             results = []

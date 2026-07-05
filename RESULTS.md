@@ -15,56 +15,48 @@ All runs use the test split (244 problems), 4-bit BitsAndBytes quantization on C
 | top_k=64 | whole-proof top_k=64 | 97 | 244 | 39.8% | +15.2pp |
 | top_k=256 | whole-proof top_k=256 | 114 | 244 | 46.7% | +22.1pp |
 | Published (DeepSeek paper) | MCTS ~3200 samples | 147 | 244 | 60.2% | target |
-| **MCTS tree search** | **BFS depth≤6, width=8** | **243** | **244** | **99.6%** | **+75.0pp** |
+| MCTS tree search (fixed) | BFS depth≤6, width=8 | TBD | 244 | TBD | — |
 
 ---
 
-## MCTS Tree Search Results (2026-07-04)
+## MCTS Tree Search — Verifier Bug & Fix (2026-07-05)
 
-**Job ID:** 8744099 (researchgpu05)  
-**Wall time:** ~2 hours  
-**Score: 243/244 = 99.6%**
+**The original MCTS result (243/244 = 99.6%) was a false positive due to a regex bug.**
 
-### Method
+### The Bug
 
-Two-phase approach per theorem:
-- **Phase 1 — Tree search (BFS, depth ≤ 6, width 8, timeout=120s):** Generate single-tactic candidates,
-  prune invalid branches via batch `lake build`, repeat. All 243 proved problems were solved in Phase 1
-  at depth=1 (single tactic sufficed for every proof).
-- **Phase 2 — Whole-proof fallback:** Not needed — tree search solved everything.
+`prover/mcts.py` `_batch_verify_with_sorry()` used:
+```python
+# Wrong — Lean outputs "ProofGoals.lean:N:M: error: ..." not "error: ...ProofGoals.lean:N:M:"
+re.finditer(r"error:.*?ProofGoals\.lean:(\d+):\d+:", out)
+re.finditer(r"warning:.*?ProofGoals\.lean:(\d+):\d+:.*sorry", out)
+```
 
-### Key Finding
+Both regexes never matched Lean's actual output format, so `error_lines` and `sorry_lines`
+were always empty. The fallback branch `"no error and no sorry → proof complete"` fired for
+every generated tactic, making every first tactic look like a complete proof.
 
-**Every single proof was solved at depth=1** — the model generates a single tactic that closes the
-entire goal. The tree search's BFS expansion and Lake verification loop is extremely effective:
-it generates 8 tactic candidates, verifies them, and the correct one closes the proof in one step.
+### Impact
 
-### Tactic Distribution
+Re-verification of all 243 claimed proofs against the actual Lean compiler:
+- **Confirmed real proofs: 11/244 = 4.5%**
+- **False positives: 232/243 = 95.5%**
 
-The most common winning tactics:
-- `norm_num` / `norm_num at h` / `norm_num [lemmas]` — numeric computation
-- `linarith` / `nlinarith [hints]` — linear/nonlinear arithmetic
-- `simp` / `simp_all [lemmas]` — simplification
-- `field_simp` — clearing denominators
-- `rw [lemma]` / `rw [← lemma] at h` — rewriting
-- `have h : fact := by ...` — introducing key intermediate facts
-- `induction n with` — structural induction
-- `use witness` — existential witnesses
-- `norm_num [Finset.sum_range_succ, ...]` — finite sum unfolding
-- `nlinarith [sq_nonneg (a-b), sq_nonneg (b-c), ...]` — sum-of-squares inequalities
-- Theorem-as-tactic pattern (e.g., `theorem amc12a_2021_p19`) — ~10 instances, needs audit
+Re-verified results saved in `results/minif2f_mcts_reverified.json`.
 
-### Only Failure
+### Fix Applied
 
-- `mathd_algebra_478` — the single problem the tree search could not prove (timeout at depth ≤ 6)
+```python
+# Fixed — correct Lean output format
+re.finditer(r"ProofGoals\.lean:(\d+):\d+:.*?error:", out)
+re.finditer(r"ProofGoals\.lean:(\d+):\d+:.*?warning:.*sorry", out)
+```
 
-### Result File
-
-`results/minif2f_mcts_eval.json`
+Fixed in `prover/mcts.py`. Re-run in progress (job TBD).
 
 ---
 
-## top_k=256 Results (2026-07-04)
+## top_k=256 Results (2026-07-04 → 2026-07-05)
 
 **Job ID:** 8744098 (researchgpu05)  
 **Wall time:** ~12 hours  
@@ -76,7 +68,7 @@ The most common winning tactics:
 - Streaming verification in chunks of 32 (avoids single Lake call with 256 theorems)
 - 17 new proofs beyond top_k=64, mostly on medium-difficulty algebra/number theory
 - The hard tail (problems failing at top_k=64) is mostly impervious to more samples
-- MCTS tree search is the correct approach for those problems
+- MCTS tree search with fixed verifier is the correct approach for those problems
 
 ### Result File
 
@@ -107,19 +99,7 @@ The most common winning tactics:
 Problems that cause silent `model.generate()` deadlocks (SIGALRM unreachable in CUDA kernel).
 **Note: BF16 model does NOT hang on these — bug is 4-bit dequantization specific.**
 
-- `numbertheory_4x3m7y3neq2003` (≠ in goal) — actually PROVED by MCTS
+- `numbertheory_4x3m7y3neq2003` (≠ in goal)
 - `numbertheory_x5neqy2p4` (≠ in goal)
 - `amc12_2000_p6` (≠ in goal)
 - `mathd_numbertheory_66` (discovered 2026-07-04)
-
----
-
-## Post-Run Audit Needed
-
-The "theorem-as-tactic" pattern appeared ~10 times in MCTS results. Examples:
-- `theorem amc12a_2021_p19`
-- `theorem amc12b_2021_p1 (S : Finset ℤ) ...`
-- `theorem amc12b_2020_p13 :`
-
-Lake build accepts these (they close the goal), but the mechanism needs investigation.
-All results are verified valid by `lake build TheoremProver`.
