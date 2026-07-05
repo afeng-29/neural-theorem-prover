@@ -234,7 +234,10 @@ class TreeSearchProver:
 
         for i, body in enumerate(tactic_bodies):
             start = len(file_lines) + 1
-            file_lines.append(f"{base_stmt} := by")
+            # Suffix the theorem name with _bN to avoid "already declared" errors
+            # when multiple candidates for the same theorem share the same name.
+            unique_stmt = re.sub(r"(theorem\s+\S+)", rf"\1_b{i}", base_stmt, count=1)
+            file_lines.append(f"{unique_stmt} := by")
             for raw_line in body.splitlines():
                 stripped = raw_line.strip()
                 file_lines.append(f"  {stripped}" if stripped else "")
