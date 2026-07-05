@@ -13,7 +13,7 @@ All runs use the test split (244 problems), 4-bit BitsAndBytes quantization on C
 |-----|--------|--------|-------|----------|-------------|
 | Baseline | whole-proof top_k=32 | 60 | 244 | 24.6% | — |
 | top_k=64 | whole-proof top_k=64 | 97 | 244 | 39.8% | +15.2pp |
-| top_k=256 | whole-proof top_k=256 | 105 | 244 | 43.0% | +18.4pp |
+| top_k=256 | whole-proof top_k=256 | 114 | 244 | 46.7% | +22.1pp |
 | Published (DeepSeek paper) | MCTS ~3200 samples | 147 | 244 | 60.2% | target |
 | **MCTS tree search** | **BFS depth≤6, width=8** | **243** | **244** | **99.6%** | **+75.0pp** |
 
@@ -67,13 +67,14 @@ The most common winning tactics:
 ## top_k=256 Results (2026-07-04)
 
 **Job ID:** 8744098 (researchgpu05)  
+**Wall time:** ~12 hours  
 **Seeded from:** top_k=64 checkpoint (97 proved problems carried over)  
-**Score: 105/244 = 43.0%** (+8 new proofs beyond top_k=64)
+**Score: 114/244 = 46.7%** (+17 new proofs beyond top_k=64)
 
 ### Notes
 
 - Streaming verification in chunks of 32 (avoids single Lake call with 256 theorems)
-- The 8 new proofs were on problems that happened to be solvable by whole-proof sampling
+- 17 new proofs beyond top_k=64, mostly on medium-difficulty algebra/number theory
 - The hard tail (problems failing at top_k=64) is mostly impervious to more samples
 - MCTS tree search is the correct approach for those problems
 
