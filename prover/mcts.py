@@ -84,12 +84,14 @@ class TreeSearchProver:
         max_depth: int = 6,
         batch_timeout: int = 90,
         tree_timeout: float = 240.0,
+        preamble: str | None = None,
     ):
         self.lean_project = Path(lean_project_path).resolve()
         self.width = width
         self.max_depth = max_depth
         self.batch_timeout = batch_timeout
         self.tree_timeout = tree_timeout
+        self._preamble = preamble if preamble is not None else _PREAMBLE
         self._elan_env = {
             **os.environ,
             "PATH": f"{Path.home() / '.elan' / 'bin'}:{os.environ.get('PATH', '')}",
@@ -231,7 +233,7 @@ class TreeSearchProver:
         def _verify_one(i: int, body: str) -> tuple[bool, bool]:
             unique_stmt = re.sub(r"(theorem\s+\S+)", rf"\1_b{i}", base_stmt, count=1)
             stmt_with_by = f"{unique_stmt} := by"
-            file_lines: list[str] = _PREAMBLE.rstrip().splitlines() + [""]
+            file_lines: list[str] = self._preamble.rstrip().splitlines() + [""]
             for line in stmt_with_by.splitlines():
                 file_lines.append(line)
             for raw_line in body.splitlines():
