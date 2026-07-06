@@ -210,7 +210,8 @@ def verify_whole_proofs(lean_project: Path, formal_statement: str, proof_bodies:
             except Exception:
                 pass
 
-    with ThreadPoolExecutor(max_workers=len(proof_bodies)) as executor:
+    # Cap at 4 workers — each lean process loads ~8-12 GB of Mathlib oleans
+    with ThreadPoolExecutor(max_workers=min(4, len(proof_bodies))) as executor:
         results = list(executor.map(
             lambda args: _verify_one(*args),
             enumerate(proof_bodies),

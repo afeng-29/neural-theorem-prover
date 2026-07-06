@@ -83,8 +83,8 @@ def main():
     skipped = 0
     corrected = dict(results)
 
-    # Verify up to 8 in parallel (GPU node can handle it)
-    PARALLEL = 8
+    # 4 parallel lean processes — each loads ~3-4GB of Mathlib oleans
+    PARALLEL = 4
     items_with_formal = []
     for pid, v in proved_items:
         formal = stmt_map.get(pid)

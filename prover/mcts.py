@@ -214,76 +214,90 @@ class TreeSearchProver:
         timeout: int = 90,
     ) -> list[tuple[bool, bool]]:
         """
-        Verify each tactic body via a parallel 'lake env lean <file>' call.
+        Batch-verify all tactic bodies in ONE lake build call.
 
         Returns list of (valid, complete) pairs:
           (True, True):   no errors — proof is complete
           (True, False):  only "unsolved goals" error — valid tactics, proof incomplete
           (False, False): other errors — tactic is invalid
 
-        Each candidate gets its own temp file (ProofGoals_bN.lean) so errors
-        are never attributed to the wrong theorem via line-range arithmetic.
-        All N files are elaborated in parallel; wall time ≈ one build.
+        All candidates share one ProofGoals.lean file with unique _bN theorem names.
+        Errors are attributed to theorems by line range.  range_end is extended by +1
+        (the blank separator line) so that Lean errors reported at block-close time —
+        which land on the separator rather than the last tactic line — are captured
+        for the correct theorem and not silently ignored (causing false positives).
         """
         if not tactic_bodies:
             return []
 
-        from concurrent.futures import ThreadPoolExecutor
+        goals_path = self.lean_project / "ProofGoals.lean"
+        original = goals_path.read_text() if goals_path.exists() else None
 
-        def _verify_one(i: int, body: str) -> tuple[bool, bool]:
+        file_lines: list[str] = self._preamble.rstrip().splitlines() + [""]
+        ranges: list[tuple[int, int]] = []
+
+        for i, body in enumerate(tactic_bodies):
             unique_stmt = re.sub(r"(theorem\s+\S+)", rf"\1_b{i}", base_stmt, count=1)
             stmt_with_by = f"{unique_stmt} := by"
-            file_lines: list[str] = self._preamble.rstrip().splitlines() + [""]
+
+            range_start = len(file_lines) + 1
             for line in stmt_with_by.splitlines():
                 file_lines.append(line)
             for raw_line in body.splitlines():
                 stripped = raw_line.strip()
                 file_lines.append(f"  {stripped}" if stripped else "")
-            src = "\n".join(file_lines) + "\n"
+            file_lines.append("")   # blank separator
+            # +1: include separator so block-close errors (reported on the blank
+            # line by Lean) are attributed to this theorem, not silently dropped.
+            range_end = len(file_lines)
+            ranges.append((range_start, range_end))
 
-            fpath = self.lean_project / f"ProofGoals_b{i}.lean"
-            try:
-                fpath.write_text(src)
-                result = subprocess.run(
-                    ["lake", "env", "lean", fpath.name],
-                    cwd=self.lean_project,
-                    capture_output=True, text=True,
-                    timeout=timeout,
-                    env=self._elan_env,
-                )
-                out = result.stdout + result.stderr
+        src = "\n".join(file_lines)
+        try:
+            goals_path.write_text(src)
+            result = subprocess.run(
+                ["lake", "build", "TheoremProver"],
+                cwd=self.lean_project,
+                capture_output=True, text=True, timeout=timeout,
+                env=self._elan_env,
+            )
+            out = result.stdout + result.stderr
 
-                if result.returncode == 0 and "uses 'sorry'" not in out:
-                    return (True, True)
+            error_at: dict[int, list[str]] = {}
+            for line in out.splitlines():
+                m = re.search(r"ProofGoals\.lean:(\d+):\d+:", line)
+                if m and "error:" in line:
+                    ln = int(m.group(1))
+                    error_at.setdefault(ln, []).append(line)
 
-                has_unsolved = False
-                has_other = False
-                for line in out.splitlines():
-                    if "error:" in line:
-                        if "unsolved goals" in line:
-                            has_unsolved = True
-                        else:
-                            has_other = True
+            results = []
+            for range_start, range_end in ranges:
+                errors_here = {
+                    ln: msgs
+                    for ln, msgs in error_at.items()
+                    if range_start <= ln <= range_end
+                }
+                if not errors_here:
+                    results.append((True, True))
+                elif all(
+                    "unsolved goals" in msg
+                    for msgs in errors_here.values()
+                    for msg in msgs
+                ):
+                    results.append((True, False))
+                else:
+                    results.append((False, False))
 
-                if has_unsolved and not has_other:
-                    return (True, False)
-                return (False, False)
+            return results
 
-            except subprocess.TimeoutExpired:
-                return (False, False)
-            except Exception as e:
-                logger.warning("_verify_one[%d] error: %s", i, e)
-                return (False, False)
-            finally:
-                try:
-                    fpath.unlink(missing_ok=True)
-                except Exception:
-                    pass
-
-        with ThreadPoolExecutor(max_workers=len(tactic_bodies)) as executor:
-            results = list(executor.map(
-                lambda args: _verify_one(*args),
-                enumerate(tactic_bodies),
-            ))
-
-        return results
+        except subprocess.TimeoutExpired:
+            logger.warning("Batch verify timed out after %ds", timeout)
+            return [(False, False)] * len(tactic_bodies)
+        except Exception as e:
+            logger.warning("Batch verify error: %s", e)
+            return [(False, False)] * len(tactic_bodies)
+        finally:
+            if original is not None:
+                goals_path.write_text(original)
+            elif goals_path.exists():
+                goals_path.unlink()

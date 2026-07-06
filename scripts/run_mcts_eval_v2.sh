@@ -38,7 +38,8 @@ python3 -u scripts/run_minif2f_mcts_eval.py \
     --tree-timeout 120 \
     --timeout 300 \
     --tree-width 8 \
-    --tree-depth 6
+    --tree-depth 6 \
+    --resume
 
 echo "=== Done ==="
 python3 -c "

@@ -155,7 +155,8 @@ def verify_proofs(
         finally:
             fpath.unlink(missing_ok=True)
 
-    with ThreadPoolExecutor(max_workers=len(proof_bodies)) as ex:
+    # Cap at 4 workers — each lean process loads ~8-12 GB of Mathlib oleans
+    with ThreadPoolExecutor(max_workers=min(4, len(proof_bodies))) as ex:
         return list(ex.map(lambda a: _verify_one(*a), enumerate(proof_bodies)))
 
 
