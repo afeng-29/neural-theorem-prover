@@ -34,6 +34,7 @@ open BigOperators Real Nat Topology Finset
 ELAN_ENV = {
     **os.environ,
     "PATH": f"{Path.home() / '.elan' / 'bin'}:{os.environ.get('PATH', '')}",
+    "LEAN_NUM_THREADS": "1",  # prevent "failed to create thread" on job nodes
 }
 
 
@@ -53,7 +54,7 @@ def verify_one(formal_statement: str, proof: str) -> bool:
         goals_path.write_text(src)
         result = subprocess.run(
             ["lake", "build", "TheoremProver"],
-            cwd=LEAN_PROJECT, capture_output=True, text=True, timeout=120,
+            cwd=LEAN_PROJECT, capture_output=True, text=True, timeout=300,
             env=ELAN_ENV,
         )
         out = result.stdout + result.stderr

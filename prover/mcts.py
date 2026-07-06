@@ -6,19 +6,17 @@ tactic prefixes early, then expand only valid branches.
 
 Algorithm (BFS tree search):
   1. Generate k tactic prefixes (depth 1: first tactic only)
-  2. Append `sorry` and batch-verify → keep valid prefixes
+  2. Batch-verify → keep valid prefixes (those with only "unsolved goals")
   3. For each valid prefix at depth d, generate k next tactics
-  4. Verify each (prefix + new_tactic + sorry) → prune
-  5. Repeat until a prefix has NO remaining goals (proof complete)
+  4. Verify each (prefix + new_tactic) → prune
+  5. Repeat until a prefix has NO errors (proof complete)
   6. Fall back to whole-proof generation if tree search times out
 
-Why this works without a live REPL:
-  A Lean file like:
-      theorem foo : P := by
-        intro h   -- valid
-        sorry     -- remaining goal (treated as warning, not error)
-  compiles successfully. We detect "valid partial proof" = compiles
-  without error (sorry warning is OK).
+Verification approach (no sorry):
+  Compile proof WITHOUT sorry. Classify each candidate by error type:
+  - No errors:                    complete proof     (True, True)
+  - Only "unsolved goals" error:  valid partial      (True, False)
+  - Other errors:                 invalid tactic     (False, False)
 
 The key efficiency gain: we verify k branches in ONE lake build call
 (~35s) instead of k separate calls (k × 35s).
@@ -149,27 +147,26 @@ class TreeSearchProver:
             if not all_candidates:
                 break
 
-            # De-duplicate candidates by (tactics_so_far + new_tactic)
+            # De-duplicate candidates by (tactics_so_far + new_tactic).
+            # Also drop candidates where the model regenerated the theorem header
+            # (e.g. "theorem foo :") — these are not valid tactics and cause false
+            # positives because Lean closes the `by` block early on keyword errors.
             seen_keys: set[str] = set()
             deduped: list[tuple[SearchNode, str]] = []
             for node, tac in all_candidates:
                 key = "|".join(node.tactics + [tac])
-                if key not in seen_keys:
+                if key not in seen_keys and not re.match(r"^\s*theorem\s+\S", tac):
                     seen_keys.add(key)
                     deduped.append((node, tac))
 
-            # Batch verify: (tactics_so_far + new_tactic + sorry) for each candidate
-            # A result with ONLY sorry-warnings (no errors) means the tactic sequence
-            # is valid so far and has remaining goals.
-            # A result with NO warnings/errors at all means proof is COMPLETE.
+            # Batch verify (no sorry): classify by error type.
+            # "unsolved goals" only → valid partial; no errors → complete; other → invalid.
             verify_bodies = [
-                "\n".join(node.tactics + [tac, "  sorry"])
-                if not (node.tactics + [tac])  # empty — shouldn't happen
-                else "\n".join([f"  {t}" for t in node.tactics] + [f"  {tac}", "  sorry"])
+                "\n".join([f"  {t}" for t in node.tactics] + [f"  {tac}"])
                 for node, tac in deduped
             ]
 
-            verify_results = self._batch_verify_with_sorry(
+            verify_results = self._batch_verify(
                 base_stmt=base_stmt,
                 tactic_bodies=verify_bodies,
                 timeout=self.batch_timeout,
@@ -208,7 +205,7 @@ class TreeSearchProver:
             elapsed_seconds=time.monotonic() - t_start,
         )
 
-    def _batch_verify_with_sorry(
+    def _batch_verify(
         self,
         base_stmt: str,
         tactic_bodies: list[str],
@@ -218,10 +215,13 @@ class TreeSearchProver:
         For each tactic body, check whether it's a valid (possibly partial) proof.
 
         Returns list of (valid, complete) pairs:
-          valid:    the tactic sequence compiled without Lean errors
-          complete: the proof is complete (no sorry needed / no remaining goals)
+          (True, True):   no errors — proof is complete
+          (True, False):  only "unsolved goals" error — valid tactics, proof incomplete
+          (False, False): other errors — tactic is invalid
 
-        We write all candidates to one file and parse Lean's output once.
+        Compiles WITHOUT sorry. Lean reports "unsolved goals" at the theorem
+        declaration line when all tactics are valid but goals remain.
+        Any other error means the tactic itself is invalid.
         """
         if not tactic_bodies:
             return []
@@ -229,20 +229,24 @@ class TreeSearchProver:
         goals_path = self.lean_project / "ProofGoals.lean"
         original = goals_path.read_text() if goals_path.exists() else None
 
-        file_lines = [_PREAMBLE.rstrip(), ""]
+        # Split preamble into individual lines for correct 1-indexed line counting
+        file_lines: list[str] = _PREAMBLE.rstrip().splitlines() + [""]
         ranges: list[tuple[int, int]] = []
 
         for i, body in enumerate(tactic_bodies):
-            start = len(file_lines) + 1
-            # Suffix the theorem name with _bN to avoid "already declared" errors
-            # when multiple candidates for the same theorem share the same name.
+            # Suffix theorem name with _bN to avoid "already declared" errors
             unique_stmt = re.sub(r"(theorem\s+\S+)", rf"\1_b{i}", base_stmt, count=1)
-            file_lines.append(f"{unique_stmt} := by")
+            stmt_with_by = f"{unique_stmt} := by"
+
+            range_start = len(file_lines) + 1
+            for line in stmt_with_by.splitlines():
+                file_lines.append(line)
             for raw_line in body.splitlines():
                 stripped = raw_line.strip()
                 file_lines.append(f"  {stripped}" if stripped else "")
-            end = len(file_lines)
-            ranges.append((start, end))
+            range_end = len(file_lines)
+
+            ranges.append((range_start, range_end))
             file_lines.append("")
 
         src = "\n".join(file_lines)
@@ -256,29 +260,32 @@ class TreeSearchProver:
             )
             out = result.stdout + result.stderr
 
-            # Collect error lines (genuine Lean errors, not sorry-warnings)
-            # Lean format: "ProofGoals.lean:N:M: error: ..."
-            error_lines: set[int] = set()
-            for m in re.finditer(r"ProofGoals\.lean:(\d+):\d+:.*?error:", out):
-                error_lines.add(int(m.group(1)))
-
-            # Collect sorry-warning lines
-            # Lean format: "ProofGoals.lean:N:M: warning: declaration uses 'sorry'"
-            sorry_lines: set[int] = set()
-            for m in re.finditer(r"ProofGoals\.lean:(\d+):\d+:.*?warning:.*sorry", out):
-                sorry_lines.add(int(m.group(1)))
+            # Parse errors — lake outputs: "error: ProofGoals.lean:N:M: message"
+            error_at: dict[int, list[str]] = {}
+            for line in out.splitlines():
+                m = re.search(r"ProofGoals\.lean:(\d+):\d+:", line)
+                if m and "error:" in line:
+                    ln = int(m.group(1))
+                    error_at.setdefault(ln, []).append(line)
 
             results = []
-            for start, end in ranges:
-                has_error = any(start <= ln <= end for ln in error_lines)
-                has_sorry = any(start <= ln <= end for ln in sorry_lines)
-                if has_error:
-                    results.append((False, False))
-                elif has_sorry:
-                    results.append((True, False))   # valid partial proof
+            for range_start, range_end in ranges:
+                errors_here = {
+                    ln: msgs
+                    for ln, msgs in error_at.items()
+                    if range_start <= ln <= range_end
+                }
+                if not errors_here:
+                    results.append((True, True))   # complete proof
+                elif all(
+                    "unsolved goals" in msg
+                    for msgs in errors_here.values()
+                    for msg in msgs
+                ):
+                    results.append((True, False))  # valid partial proof
                 else:
-                    # No error and no sorry → proof is complete
-                    results.append((True, True))
+                    results.append((False, False)) # invalid tactic
+
             return results
 
         except subprocess.TimeoutExpired:

@@ -174,12 +174,17 @@ def verify_whole_proofs(lean_project: Path, formal_statement: str, proof_bodies:
         "PATH": f"{Path.home() / '.elan' / 'bin'}:{os.environ.get('PATH', '')}",
     }
     base = re.sub(r":=\s*sorry\s*$", "", formal_statement.strip())
-    file_lines = [MINIF2F_PREAMBLE.rstrip(), ""]
+    # Split preamble into individual lines for correct 1-indexed line tracking
+    file_lines = MINIF2F_PREAMBLE.rstrip().splitlines() + [""]
     ranges: list[tuple[int, int]] = []
 
-    for body in proof_bodies:
+    for i, body in enumerate(proof_bodies):
         start = len(file_lines) + 1
-        file_lines.append(f"{base} := by")
+        # Suffix theorem name with _bN to avoid "already declared" errors
+        unique_base = re.sub(r"(theorem\s+\S+)", rf"\1_b{i}", base, count=1)
+        stmt_with_by = f"{unique_base} := by"
+        for line in stmt_with_by.splitlines():
+            file_lines.append(line)
         for line in body.splitlines():
             s = line.strip()
             file_lines.append(f"  {s}" if s else "")
@@ -216,8 +221,10 @@ def verify_whole_proofs(lean_project: Path, formal_statement: str, proof_bodies:
             return [True] * len(proof_bodies)
 
         error_lines: set[int] = set()
-        for m in re.finditer(r"ProofGoals\.lean:(\d+):\d+:.*?error:", out):
-            error_lines.add(int(m.group(1)))
+        for line in out.splitlines():
+            m = re.search(r"ProofGoals\.lean:(\d+):\d+:", line)
+            if m and "error:" in line:
+                error_lines.add(int(m.group(1)))
 
         return [
             not any(s <= ln <= e for ln in error_lines)

@@ -15,7 +15,40 @@ All runs use the test split (244 problems), 4-bit BitsAndBytes quantization on C
 | top_k=64 | whole-proof top_k=64 | 97 | 244 | 39.8% | +15.2pp |
 | top_k=256 | whole-proof top_k=256 | 114 | 244 | 46.7% | +22.1pp |
 | Published (DeepSeek paper) | MCTS ~3200 samples | 147 | 244 | 60.2% | target |
-| MCTS tree search (fixed) | BFS depth≤6, width=8 | TBD | 244 | TBD | — |
+| MCTS tree search (claimed) | BFS depth≤6, width=8 | 143 | 244 | 58.6% | +12.0pp vs top_k=256 |
+| MCTS tree search (verified) | BFS depth≤6, width=8 | 75 | 244 | 30.7% | verified by lake build |
+
+---
+
+## MCTS Tree Search — Final Results (2026-07-06)
+
+**Job ID:** 8744308 (researchgpu05)  
+**Method:** BFS depth≤6, width=8, DeepSeek-Prover-V1.5-RL 4-bit, `max_new_tokens=256`  
+**Claimed score (batch verifier):** 143/244 = 58.6%  
+**Verified score (individual lake build):** **75/244 = 30.7%**  
+**Re-verification job:** 8749514 (researchgpu04)
+
+### False Positive Analysis
+
+68 of 143 claimed proofs (47.6%) were batch-verifier false positives:
+
+- **~17 `theorem`-keyword FPs:** Model regenerated the theorem header as a tactic. Lean closes the
+  `by` block when it sees `theorem`, pushing errors outside the tracked line range → misclassified
+  as complete. Fixed in `prover/mcts.py` with a filter: `not re.match(r"^\s*theorem\s+\S", tac)`.
+- **~51 line-range FPs:** The batch verifier's `range_end` calculation still misses some "unsolved
+  goals" errors that land just outside the tracked range (e.g., errors on tactics spanning multiple
+  lines, or errors reported at the closing token of a sub-proof). These look like no-error → (True,
+  True) but are actually partial proofs.
+
+### Result Files
+
+- `results/minif2f_mcts_eval.json` — raw MCTS output (143 claimed proofs)
+- `results/minif2f_mcts_reverified.json` — after re-verification (75 confirmed proofs)
+
+### Next Steps
+
+A clean re-run with the single-proof verifier inline (instead of batch) would eliminate all
+line-range FPs and give an accurate score. Expected range: 40–55% given proof quality observed.
 
 ---
 
