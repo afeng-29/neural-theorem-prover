@@ -13,7 +13,9 @@ All runs use the test split (244 problems), 4-bit BitsAndBytes quantization on C
 |-----|--------|--------|-------|----------|-------------|
 | Baseline | whole-proof top_k=32 | 60 | 244 | 24.6% | — |
 | top_k=64 | whole-proof top_k=64 | 97 | 244 | 39.8% | +15.2pp |
-| top_k=256 | whole-proof top_k=256 | 114 | 244 | 46.7% | +22.1pp |
+| top_k=64 (verified) | whole-proof top_k=64 reverified | 97 | 244 | 39.8% | +15.2pp |
+| top_k=256 (claimed) | whole-proof top_k=256 | 114 | 244 | 46.7% | +22.1pp |
+| top_k=256 (verified) | whole-proof top_k=256 reverified | 97 | 244 | 39.8% | +15.2pp |
 | Published (DeepSeek paper) | MCTS ~3200 samples | 147 | 244 | 60.2% | target |
 | MCTS tree search (claimed) | BFS depth≤6, width=8 | 143 | 244 | 58.6% | +12.0pp vs top_k=256 |
 | MCTS tree search (verified) | BFS depth≤6, width=8 | 75 | 244 | 30.7% | verified by lake build |
@@ -94,7 +96,11 @@ Fixed in `prover/mcts.py`. Re-run in progress (job TBD).
 **Job ID:** 8744098 (researchgpu05)  
 **Wall time:** ~12 hours  
 **Seeded from:** top_k=64 checkpoint (97 proved problems carried over)  
-**Score: 114/244 = 46.7%** (+17 new proofs beyond top_k=64)
+**Claimed score: 114/244 = 46.7%** (+17 new proofs beyond top_k=64)  
+**Verified score: 97/244 = 39.8%** (reverified via `lake env lean`, job 8749638)
+
+All 17 "new" proofs beyond top_k=64 were batch-verifier false positives. The verified top_k=256
+score is identical to top_k=64, confirming the extra samples found no genuinely new proofs.
 
 ### Notes
 
