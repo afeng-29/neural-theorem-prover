@@ -163,8 +163,9 @@ def _clean_proof(text: str) -> str:
 
 
 def verify_whole_proofs(lean_project: Path, formal_statement: str, proof_bodies: list[str]) -> list[bool]:
-    """Batch-verify proof bodies via lake build. Returns per-proof bool list."""
+    """Verify proof bodies via parallel 'lake env lean' calls. Returns per-proof bool list."""
     import subprocess, os
+    from concurrent.futures import ThreadPoolExecutor
 
     if not proof_bodies:
         return []
@@ -174,67 +175,47 @@ def verify_whole_proofs(lean_project: Path, formal_statement: str, proof_bodies:
         "PATH": f"{Path.home() / '.elan' / 'bin'}:{os.environ.get('PATH', '')}",
     }
     base = re.sub(r":=\s*sorry\s*$", "", formal_statement.strip())
-    # Split preamble into individual lines for correct 1-indexed line tracking
-    file_lines = MINIF2F_PREAMBLE.rstrip().splitlines() + [""]
-    ranges: list[tuple[int, int]] = []
 
-    for i, body in enumerate(proof_bodies):
-        start = len(file_lines) + 1
-        # Suffix theorem name with _bN to avoid "already declared" errors
+    def _verify_one(i: int, body: str) -> bool:
         unique_base = re.sub(r"(theorem\s+\S+)", rf"\1_b{i}", base, count=1)
         stmt_with_by = f"{unique_base} := by"
+        file_lines = MINIF2F_PREAMBLE.rstrip().splitlines() + [""]
         for line in stmt_with_by.splitlines():
             file_lines.append(line)
         for line in body.splitlines():
             s = line.strip()
             file_lines.append(f"  {s}" if s else "")
-        end = len(file_lines)
-        ranges.append((start, end))
-        file_lines.append("")
+        src = "\n".join(file_lines) + "\n"
 
-    src = "\n".join(file_lines)
-    goals_path = lean_project / "ProofGoals.lean"
-    original = goals_path.read_text() if goals_path.exists() else None
-
-    try:
-        goals_path.write_text(src)
-        proc = subprocess.Popen(
-            ["lake", "build", "TheoremProver"],
-            cwd=lean_project, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            env=elan_env, start_new_session=True,
-        )
-        import signal as _sig
+        fpath = lean_project / f"ProofGoals_b{i}.lean"
         try:
-            raw_out, raw_err = proc.communicate(timeout=120)
+            fpath.write_text(src)
+            result = subprocess.run(
+                ["lake", "env", "lean", fpath.name],
+                cwd=lean_project, capture_output=True, text=True,
+                timeout=120, env=elan_env,
+            )
+            out = result.stdout + result.stderr
+            if result.returncode == 0 and "uses 'sorry'" not in out:
+                return True
+            return False
         except subprocess.TimeoutExpired:
+            return False
+        except Exception as e:
+            logger.warning("verify_one[%d] error: %s", i, e)
+            return False
+        finally:
             try:
-                import os as _os
-                _os.killpg(proc.pid, _sig.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                proc.kill()
-            proc.communicate()
-            logger.warning("Whole-proof verify timed out")
-            return [False] * len(proof_bodies)
-        out = raw_out.decode(errors="replace") + raw_err.decode(errors="replace")
+                fpath.unlink(missing_ok=True)
+            except Exception:
+                pass
 
-        if proc.returncode == 0 and "error:" not in out.lower() and "uses 'sorry'" not in out:
-            return [True] * len(proof_bodies)
-
-        error_lines: set[int] = set()
-        for line in out.splitlines():
-            m = re.search(r"ProofGoals\.lean:(\d+):\d+:", line)
-            if m and "error:" in line:
-                error_lines.add(int(m.group(1)))
-
-        return [
-            not any(s <= ln <= e for ln in error_lines)
-            for s, e in ranges
-        ]
-    finally:
-        if original is not None:
-            goals_path.write_text(original)
-        elif goals_path.exists():
-            goals_path.unlink()
+    with ThreadPoolExecutor(max_workers=len(proof_bodies)) as executor:
+        results = list(executor.map(
+            lambda args: _verify_one(*args),
+            enumerate(proof_bodies),
+        ))
+    return results
 
 
 def eval_problem(

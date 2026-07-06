@@ -18,8 +18,8 @@ Verification approach (no sorry):
   - Only "unsolved goals" error:  valid partial      (True, False)
   - Other errors:                 invalid tactic     (False, False)
 
-The key efficiency gain: we verify k branches in ONE lake build call
-(~35s) instead of k separate calls (k × 35s).
+Each candidate gets its own temp file and is verified via 'lake env lean'
+in parallel — wall time ≈ one build, zero line-range attribution errors.
 """
 
 from __future__ import annotations
@@ -212,90 +212,76 @@ class TreeSearchProver:
         timeout: int = 90,
     ) -> list[tuple[bool, bool]]:
         """
-        For each tactic body, check whether it's a valid (possibly partial) proof.
+        Verify each tactic body via a parallel 'lake env lean <file>' call.
 
         Returns list of (valid, complete) pairs:
           (True, True):   no errors — proof is complete
           (True, False):  only "unsolved goals" error — valid tactics, proof incomplete
           (False, False): other errors — tactic is invalid
 
-        Compiles WITHOUT sorry. Lean reports "unsolved goals" at the theorem
-        declaration line when all tactics are valid but goals remain.
-        Any other error means the tactic itself is invalid.
+        Each candidate gets its own temp file (ProofGoals_bN.lean) so errors
+        are never attributed to the wrong theorem via line-range arithmetic.
+        All N files are elaborated in parallel; wall time ≈ one build.
         """
         if not tactic_bodies:
             return []
 
-        goals_path = self.lean_project / "ProofGoals.lean"
-        original = goals_path.read_text() if goals_path.exists() else None
+        from concurrent.futures import ThreadPoolExecutor
 
-        # Split preamble into individual lines for correct 1-indexed line counting
-        file_lines: list[str] = _PREAMBLE.rstrip().splitlines() + [""]
-        ranges: list[tuple[int, int]] = []
-
-        for i, body in enumerate(tactic_bodies):
-            # Suffix theorem name with _bN to avoid "already declared" errors
+        def _verify_one(i: int, body: str) -> tuple[bool, bool]:
             unique_stmt = re.sub(r"(theorem\s+\S+)", rf"\1_b{i}", base_stmt, count=1)
             stmt_with_by = f"{unique_stmt} := by"
-
-            range_start = len(file_lines) + 1
+            file_lines: list[str] = _PREAMBLE.rstrip().splitlines() + [""]
             for line in stmt_with_by.splitlines():
                 file_lines.append(line)
             for raw_line in body.splitlines():
                 stripped = raw_line.strip()
                 file_lines.append(f"  {stripped}" if stripped else "")
-            range_end = len(file_lines)
+            src = "\n".join(file_lines) + "\n"
 
-            ranges.append((range_start, range_end))
-            file_lines.append("")
+            fpath = self.lean_project / f"ProofGoals_b{i}.lean"
+            try:
+                fpath.write_text(src)
+                result = subprocess.run(
+                    ["lake", "env", "lean", fpath.name],
+                    cwd=self.lean_project,
+                    capture_output=True, text=True,
+                    timeout=timeout,
+                    env=self._elan_env,
+                )
+                out = result.stdout + result.stderr
 
-        src = "\n".join(file_lines)
-        try:
-            goals_path.write_text(src)
-            result = subprocess.run(
-                ["lake", "build", "TheoremProver"],
-                cwd=self.lean_project,
-                capture_output=True, text=True, timeout=timeout,
-                env=self._elan_env,
-            )
-            out = result.stdout + result.stderr
+                if result.returncode == 0 and "uses 'sorry'" not in out:
+                    return (True, True)
 
-            # Parse errors — lake outputs: "error: ProofGoals.lean:N:M: message"
-            error_at: dict[int, list[str]] = {}
-            for line in out.splitlines():
-                m = re.search(r"ProofGoals\.lean:(\d+):\d+:", line)
-                if m and "error:" in line:
-                    ln = int(m.group(1))
-                    error_at.setdefault(ln, []).append(line)
+                has_unsolved = False
+                has_other = False
+                for line in out.splitlines():
+                    if "error:" in line:
+                        if "unsolved goals" in line:
+                            has_unsolved = True
+                        else:
+                            has_other = True
 
-            results = []
-            for range_start, range_end in ranges:
-                errors_here = {
-                    ln: msgs
-                    for ln, msgs in error_at.items()
-                    if range_start <= ln <= range_end
-                }
-                if not errors_here:
-                    results.append((True, True))   # complete proof
-                elif all(
-                    "unsolved goals" in msg
-                    for msgs in errors_here.values()
-                    for msg in msgs
-                ):
-                    results.append((True, False))  # valid partial proof
-                else:
-                    results.append((False, False)) # invalid tactic
+                if has_unsolved and not has_other:
+                    return (True, False)
+                return (False, False)
 
-            return results
+            except subprocess.TimeoutExpired:
+                return (False, False)
+            except Exception as e:
+                logger.warning("_verify_one[%d] error: %s", i, e)
+                return (False, False)
+            finally:
+                try:
+                    fpath.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
-        except subprocess.TimeoutExpired:
-            logger.warning("Batch verify timed out after %ds", timeout)
-            return [(False, False)] * len(tactic_bodies)
-        except Exception as e:
-            logger.warning("Batch verify error: %s", e)
-            return [(False, False)] * len(tactic_bodies)
-        finally:
-            if original is not None:
-                goals_path.write_text(original)
-            elif goals_path.exists():
-                goals_path.unlink()
+        with ThreadPoolExecutor(max_workers=len(tactic_bodies)) as executor:
+            results = list(executor.map(
+                lambda args: _verify_one(*args),
+                enumerate(tactic_bodies),
+            ))
+
+        return results
