@@ -19,6 +19,25 @@ All runs use the test split (244 problems), 4-bit BitsAndBytes quantization on C
 | Published (DeepSeek paper) | MCTS ~3200 samples | 147 | 244 | 60.2% | target |
 | MCTS tree search (claimed) | BFS depth≤6, width=8 | 143 | 244 | 58.6% | +12.0pp vs top_k=256 |
 | MCTS tree search (verified) | BFS depth≤6, width=8 | 75 | 244 | 30.7% | verified by lake build |
+| **MCTS v2 (clean run)** | **BFS depth≤6, width=8, fixed verifier** | **119** | **244** | **48.8%** | **+9.0pp vs top_k baseline** |
+
+---
+
+## MCTS v2 — Clean Run Final Results (2026-07-07)
+
+**Job ID:** 8749649 (researchgpu04)  
+**Method:** BFS depth≤6, width=8, DeepSeek-Prover-V1.5-RL 4-bit  
+**Verifier:** batch lake build with range_end+1 fix + theorem-keyword tactic filter  
+**Score: 119/244 = 48.8%** (+9.0pp over verified whole-proof baseline of 39.8%)  
+**Wall time:** 13.9 hours
+
+This is the first MCTS result with a correct verifier. The rate was stable at ~48-49% throughout
+all 244 problems. Compared to the published 60.2% target (using ~3200 samples/problem), our
+run used 400 samples/problem — closing about 40% of the gap with ~8× fewer samples.
+
+### Result File
+
+`results/minif2f_mcts_eval_v2.json`
 
 ---
 
