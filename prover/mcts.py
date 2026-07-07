@@ -111,7 +111,9 @@ class TreeSearchProver:
 
         # BFS frontier: list of SearchNode at current depth
         frontier = [SearchNode(tactics=[], depth=0)]
-        base_stmt = re.sub(r":=\s*sorry\s*$", "", formal_statement.strip())
+        base_stmt = formal_statement.strip()
+        base_stmt = re.sub(r":=\s*by\s+sorry\s*$", "", base_stmt, flags=re.DOTALL).strip()
+        base_stmt = re.sub(r":=\s*sorry\s*$", "", base_stmt).strip()
 
         for depth in range(self.max_depth):
             if not frontier:
