@@ -21,6 +21,18 @@ All runs use the test split (244 problems), 4-bit BitsAndBytes quantization on C
 | MCTS tree search (verified) | BFS depth≤6, width=8 | 75 | 244 | 30.7% | verified by lake build |
 | **MCTS v2 (clean run)** | **BFS depth≤6, width=8, fixed verifier** | **119** | **244** | **48.8%** | **+9.0pp vs top_k baseline** |
 
+### MA-ProofBench (openbmb/MA-ProofBench)
+
+| Run | Method | Proved | Total | Accuracy |
+|-----|--------|--------|-------|----------|
+| DeepSeek base | whole-proof + MCTS, 200 samples | 0 | 200 | 0.0% |
+
+Job 8774411 cancelled after 68/200 problems (0 proved). MA-ProofBench requires
+undergraduate/PhD-level analysis proofs (Lipschitz continuity, complex analysis,
+PDEs, measure theory) that are qualitatively harder than miniF2F competition math.
+DeepSeek-Prover with 200 samples per problem finds no proofs at this difficulty level.
+See §MA-ProofBench section below for details.
+
 ---
 
 ## MCTS v2 — Clean Run Final Results (2026-07-07)
@@ -149,6 +161,42 @@ score is identical to top_k=64, confirming the extra samples found no genuinely 
 ## Baseline: top_k=32 (2026-07-03)
 
 **Score: 60/244 = 24.6%**
+
+---
+
+## MA-ProofBench Evaluation (2026-07-07)
+
+**Dataset:** `openbmb/MA-ProofBench` — 200 Lean 4 problems (100 level1 undergrad, 100 level2 PhD)  
+**Job:** 8774411 (researchgpu05), cancelled after 68/200 level1 problems  
+**Score: 0/200 = 0.0%**
+
+### Why 0%
+
+MA-ProofBench is qualitatively harder than miniF2F:
+
+| Benchmark | Source | Difficulty | Our score |
+|-----------|--------|------------|-----------|
+| miniF2F | AMC/AIME/IMO competition | High school | 48.8% |
+| MA-ProofBench level1 | Undergraduate analysis | Undergrad | 0% |
+| MA-ProofBench level2 | PhD-level math | PhD | 0% |
+
+Representative level1 problems:
+- `LipschitzWith 1 Real.sin ∧ LipschitzWith 1 Real.cos`
+- Complex analysis: holomorphic functions with conjugate-holomorphic constraint
+- PDEs: existence of solutions via tsum equalities
+- Measure theory: dominated convergence applications
+
+These require multi-lemma Mathlib API calls and proof structures the model never
+learned to synthesize from the competition-math training distribution.
+
+### Bug discovered and fixed
+
+`prover/mcts.py`'s `search()` method stripped `:= sorry` but not `:= by\n  sorry`
+(the format MA-ProofBench uses). This left `sorry` in `base_stmt`, causing
+`_batch_verify` to build malformed files (`theorem ... := by\n  sorry := by\n  <tactic>`).
+All tactics returned `(False, False)` from parse errors, collapsing tree search at depth 0
+for every problem. Fix committed in 820eb1b — but this did not change the 0% result,
+since whole-proof sampling (unaffected by the bug) also found 0 proofs.
 
 ---
 
