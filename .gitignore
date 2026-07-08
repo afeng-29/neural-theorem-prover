@@ -8,8 +8,9 @@ build/
 .eggs/
 *.pth
 
-# Model weights (large — download via HuggingFace)
+# Model weights (large — download via HuggingFace or trained locally)
 models/pretrained/
+models/finetuned/
 
 # LeanDojo trace cache (auto-rebuilt, lives in ~/.cache/lean_dojo)
 .leandojo_cache/
