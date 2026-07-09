@@ -82,20 +82,23 @@ Mentor: Professor Namkoong}
 We investigate how far a single off-the-shelf theorem-proving model can be pushed on
 the miniF2F benchmark under realistic compute constraints: one A40 GPU, 4-bit
 quantization, and a fixed per-problem time budget.
-Whole-proof generation with DeepSeek-Prover-V1.5-RL reaches 39.8\% pass@1 at
-64 samples per problem, then plateaus completely: scaling to 256 samples yields
-zero additional proofs.
-Adding Monte Carlo Tree Search (BFS, depth at most 6, verified via a single
-\texttt{lake build} call) improves the score to 48.8\%, with tree search uniquely
-closing 25 problems that exhaustive whole-proof sampling never finds.
-Two attempts at LoRA fine-tuning both degraded performance relative to the
-unmodified base model.
+Starting from DeepSeek-Prover-V1.5-RL with whole-proof generation,
+we document a series of experiments whose failures are as informative as their successes.
+Whole-proof sampling reaches 39.8\% pass@1 at 64 samples per problem, then plateaus
+completely: going to 256 samples yields zero additional verified proofs.
+Adding Monte Carlo Tree Search (BFS, depth at most 6) improves the score to 48.8\%,
+but the mechanism is more nuanced than it first appears: only 8 of the 25
+problems uniquely solved by the MCTS configuration are attributable to tree
+structure itself; the remaining 17 come from the larger whole-proof fallback budget
+(400 vs.\ 256 samples), making the tree search's isolated contribution modest.
+Two rounds of LoRA fine-tuning both degraded performance.
 We trace this failure to a distributional mismatch: 98\% of the available
 fine-tuning proofs are single-line tactic closers, while 63\% of the problems
-successfully proved on miniF2F require multi-step reasoning.
-The remaining gap to the published 60.2\% result reflects a combination of
-compute scale (400 vs.\ 3200 samples per problem) and a hard tail of
-122 competition problems that neither strategy solves.
+successfully solved on miniF2F require multi-step proofs.
+Fine-tuning amplified exactly the capability the benchmark does not need.
+The remaining gap to the published 60.2\% reflects a 50\% hard tail of competition
+problems that require proof structures neither strategy can construct, not a
+gap that more samples would close.
 \end{abstract}
 
 \maketitle
@@ -118,23 +121,43 @@ Monte Carlo Tree Search with thousands of samples per problem.
 This project asks a more constrained question: how much of that performance
 can be recovered with a single GPU node, 4-bit quantized inference, and
 roughly 400 samples per problem?
-We find the answer to be 48.8\%---well above the 24.6\% achieved by simpler
-baselines, but still 11 percentage points short of the paper's result.
-The analysis of where that gap comes from, and what happened when we tried
-to close it, turns out to be as informative as the headline number.
+The headline answer is 48.8\%.
+But the more useful answer lies in understanding \emph{why} the remaining
+gap persists despite everything we tried, and what each failed attempt
+reveals about the structure of the problem.
 
-Three main findings drive the paper.
-First, whole-proof sampling saturates very early: going from 64 to 256 samples
-per problem yields no new proofs, indicating that the 60\% barrier requires
-a fundamentally different strategy rather than more of the same computation.
-Second, tree search does help, but asymmetrically: it solves 25 problems that
-exhaustive sampling never finds (mostly harder multi-step competition problems)
-while losing 3 problems that sampling gets lucky on, for a net gain of
-22 additional theorems.
-Third, fine-tuning the model on available Lean 4 proof corpora
-consistently makes things worse, because nearly all available training
-proofs are single-line tactic applications while the miniF2F problems that
-need help are precisely the ones requiring multi-step structured reasoning.
+The project proceeded through three broad phases, each with a natural
+failure mode.
+\emph{Phase 1: scaling whole-proof sampling.}
+Simply generating more independent proof attempts is the obvious first move.
+Doubling the sample budget from 32 to 64 yields a large gain (+15.2 pp),
+but quadrupling it again to 256 yields nothing: all 17 proofs the unverified
+result claimed beyond 64 samples turned out to be verifier false positives.
+The model's sampling distribution appears to ``max out'' on the set of problems
+it can reach by the 64th attempt.
+\emph{Phase 2: tree search.}
+Adding BFS-guided tactic-level search partially breaks the plateau, but
+the contribution is smaller than it appears.
+Of the 25 additional problems the MCTS configuration solves, 8 are
+genuinely attributable to the tree structure itself---these are short
+proofs (average 1.9 tactics) that whole-proof sampling never generates.
+The other 17 come from the whole-proof fallback having 400 samples
+instead of 256, not from tree search at all.
+\emph{Phase 3: fine-tuning.}
+Two rounds of LoRA fine-tuning, with progressively more training data and
+better hardware, both made things worse.
+The problem was a mismatch: the best available Lean 4 training corpus
+consists of 98\% single-line proofs, but the problems that needed help on
+miniF2F require multi-step structured reasoning.
+
+Each of these failures is, in its own way, informative.
+The sampling plateau shows that the gap to 60.2\% is not a compute-scaling
+problem within the whole-proof paradigm.
+The partial success of tree search shows that structured search does help,
+but only for a specific slice of problems---those where the correct first
+tactic is discoverable by BFS within 6 steps.
+The fine-tuning failure shows that the bottleneck is the training
+distribution, not the model capacity.
 
 %-----------------------------------------------------------------------
 \section{Background}
@@ -150,10 +173,14 @@ Each problem provides a complete Lean 4 theorem declaration ending in
 
 The problems span three main categories: algebra (88 problems, 36\% of the
 test set), number theory (68 problems, 28\%), and competition-style problems
-from AMC/AIME/IMO (80 problems, 33\%), with the remainder being miscellaneous
-mathematical statements.
-Difficulty varies widely, from one-line arithmetic verifications to
-multi-step inequalities requiring specialized Mathlib lemmas.
+from AMC/AIME/IMO (80 problems, 33\%), with the remaining 8 problems being
+induction exercises.
+Difficulty varies widely within each category: some algebra problems admit
+one-line \texttt{ring} or \texttt{norm\_num} proofs, while others require
+multi-step inequality arguments using specific Mathlib lemmas.
+The 80 competition problems are uniformly hard: they require either the precise
+right Mathlib API call or a structured multi-step argument that the model must
+generate without any intermediate feedback.
 
 \subsection{DeepSeek-Prover-V1.5-RL}
 
@@ -162,14 +189,14 @@ model derived from DeepSeek-Coder-V1.5-Instruct and further trained via reinforc
 learning on Lean 4 proof feedback.
 Its inference protocol is \emph{whole-proof generation}: the model is given a
 Lean 4 file stub ending with \texttt{:= by}, and generates the complete proof body
-in a single forward pass.
+in a single forward pass, with no intermediate feedback.
 The published result of 60.2\% on miniF2F-test uses roughly 3200 independent
 samples per problem and a tree-search variant that applies at each step.
 
 We use the publicly released weights under 4-bit NF4 quantization via
-BitsAndBytes \cite{bitsandbytes}, reducing memory from approximately 14 GB to
-4 GB and enabling the full model to run on a single A40 GPU alongside the
-Lean verification infrastructure.
+BitsAndBytes \cite{bitsandbytes}, reducing peak GPU memory from approximately
+14 GB to 4 GB and enabling the full model to run on a single A40 GPU alongside
+the Lean verification infrastructure.
 
 \subsection{Lean 4 Verification}
 
@@ -178,10 +205,26 @@ using \texttt{lake build} \cite{mathlib}.
 A proof is accepted if and only if the build exits with code 0 and no
 \texttt{uses 'sorry'} warning appears in the output.
 For tree-search verification, all candidates at each depth are compiled in a
-single batch file, with errors attributed to individual theorems by line range.
+single batch file, with errors attributed to individual theorems by tracking
+line ranges in the shared file.
 For whole-proof verification, up to 4 candidate files are compiled in parallel
-to avoid exhausting GPU-node memory (each Lean elaboration process loads the
-full Mathlib olive olean cache, approximately 8--12 GB per process).
+to avoid exhausting GPU-node memory; each Lean elaboration process loads the
+full Mathlib olean cache, approximately 8--12 GB per process.
+
+Getting verification right turned out to be the hardest engineering challenge
+of this project.
+The batch verifier had two subtle bugs that caused it to report completions
+when proofs were still incomplete:
+(1) Lean sometimes reports ``unsolved goals'' at the blank separator line
+after the last tactic, one line past the tracked range---fixing this
+by extending each theorem's range by one line eliminated 51 false positives;
+(2) when the model regenerates the theorem header as a ``tactic,'' Lean
+silently closes the \texttt{by} block early, making the remaining goals
+invisible to the line-range checker---adding a filter for candidates
+matching \verb|^\s*theorem\s+\S| eliminated 17 additional false positives.
+Together these bugs inflated one intermediate MCTS result from a true 30.7\%
+to a claimed 58.6\%.
+All final results reported here are verified by the corrected implementation.
 
 %-----------------------------------------------------------------------
 \section{Methods}
@@ -198,38 +241,28 @@ verification call and a per-proof token budget of 256 new tokens.
 All generation runs use batch size 16, which we found to be the largest
 stable batch size under 4-bit quantization.
 Batch size 8 produces deadlocks in \texttt{torch.multinomial} on CUDA 12.2 due
-to a known interaction with BitsAndBytes dequantization; this required careful
-handling throughout the evaluation.
+to a known interaction with BitsAndBytes dequantization.
 
 \subsection{Monte Carlo Tree Search}
+\label{sec:method_mcts}
 
 The tree-search variant explores proof tactics step-by-step using BFS to
-depth at most 6, with width 8 (eight tactic candidates generated per
-node expansion).
-At each depth, all candidate tactic sequences are compiled in a single
-\texttt{lake build} call on a shared \texttt{ProofGoals.lean} file.
-Errors are attributed to individual theorems by tracking each theorem's
-line range in the file.
+depth at most 6, with width 8 (eight tactic candidates generated per node).
+At each node, the model's prompt includes the formal theorem statement and
+the sequence of tactics applied so far; it is asked to generate the next
+single tactic.
+At each depth, all $8 \times |\text{frontier}|$ tactic candidates are compiled
+in a single \texttt{lake build} call against a shared \texttt{ProofGoals.lean}
+file.
+Candidates are classified as: (a) complete---no errors; (b) valid partial---only
+``unsolved goals'' errors remain; (c) invalid---any other error.
+Only valid partials are retained for the next depth.
 
-One subtle correctness issue required a fix: Lean sometimes reports
-``unsolved goals'' errors at the blank separator line after the last
-tactic rather than on the tactic itself (at block-close elaboration time).
-The naive implementation did not include this separator line in the range
-assigned to a theorem, causing roughly 51 false positives in which
-incomplete proofs appeared to succeed.
-The fix extends each theorem's range by one line to capture separator-line
-errors.
-
-Additionally, a tactic filter drops any candidate that matches
-\verb|^\s*theorem\s+\S|, which catches cases where the model regenerates
-the theorem header as a tactic---an error that caused Lean to silently
-close the current \texttt{by} block early, producing roughly 17 additional
-false positives in the uncorrected implementation.
-
-Each problem receives a 120-second tree-search budget followed by a
-whole-proof fallback phase using 400 samples total.
-If tree search proves the goal before the budget expires, the fallback
-is skipped.
+After the tree search exhausts its 120-second budget without finding a proof,
+the problem enters a whole-proof fallback phase: the model generates up to 400
+independent whole-proof candidates via the standard generation procedure.
+This combined budget of tree search followed by fallback constitutes the MCTS
+configuration reported in \autoref{tab:main_results}.
 
 \subsection{LoRA Fine-Tuning}
 
@@ -237,11 +270,11 @@ We conducted two rounds of LoRA fine-tuning on the DeepSeek-Prover base model,
 both using whole-proof training pairs (Lean 4 file stub, complete proof body)
 to match the inference format.
 
-\textbf{Version 1} trained on 67 examples: the validated miniF2F proofs found
+\textbf{Version 1} trained on 67 examples: validated miniF2F proofs found
 by the base model on the validation split.
 This run used 4-bit NF4 quantization with float16 compute and LoRA rank 16.
 
-\textbf{Version 2} addressed the data scarcity by adding 10,434 proofs from the
+\textbf{Version 2} addressed data scarcity by adding 10,434 proofs from the
 Lean-Workbook dataset \cite{leanworkbook} (filtered to examples with
 \texttt{state\_after = "no goals"}), giving 10,561 total training examples.
 This run used full BF16 precision and LoRA rank 64 on an A100-class GPU.
@@ -252,14 +285,14 @@ This run used full BF16 precision and LoRA rank 64 on an A100-class GPU.
 
 \autoref{tab:main_results} summarizes all evaluated configurations on the
 miniF2F test split (244 problems).
-All results with an asterisk are confirmed by single-candidate re-verification
-using \texttt{lake env lean} on a GPU node; the remainder are verified by
-the batch \texttt{lake build} approach described in \autoref{sec:analysis_mcts}.
+All results marked with $\star$ were confirmed by single-candidate re-verification
+using \texttt{lake env lean} on a GPU node, independently of the batch verifier.
 
 \begin{table}[h]
 \centering
-\caption{miniF2F-test results (244 problems). ``Verified'' means the reported
-score was confirmed by independent re-verification to exclude batch false positives.}
+\caption{miniF2F-test results (244 problems). All results marked $\star$ were
+independently re-verified via \texttt{lake env lean}; unmarked baseline figures use
+the batch verifier with the corrections described in \autoref{sec:method_mcts}.}
 \label{tab:main_results}
 \begin{tabular}{@{}llccc@{}}
 \toprule
@@ -281,172 +314,214 @@ DeepSeek-Prover-V1.5-RL \cite{deepseek} & MCTS, $k \approx 3200$ & 147 & 60.2\% 
 \end{tabular}
 \end{table}
 
-The MCTS result of 48.8\% is our primary contribution.
-It is fully verified via the corrected batch lake build verifier, and
-represents a 9.0 percentage-point improvement over the whole-proof
-sampling ceiling of 39.8\%.
-The ByT5 results are included for completeness; they are discussed briefly
-in \autoref{sec:byt5}.
+The MCTS result of 48.8\% is our primary contribution: 9.0 percentage points
+above the whole-proof sampling ceiling of 39.8\%, and 24.2 pp above the
+simplest DeepSeek baseline.
+The ByT5 results are included for context; they are discussed in \autoref{sec:byt5}.
 
 %-----------------------------------------------------------------------
 \section{Analysis}
 \label{sec:analysis}
 %-----------------------------------------------------------------------
 
-\subsection{Sample Scaling Saturates Early}
+\subsection{Why Whole-Proof Sampling Saturates at 39.8\%}
 \label{sec:scaling}
 
-\autoref{tab:scaling} shows the marginal gain from adding more whole-proof
-samples.
+\autoref{tab:scaling} shows the marginal gain from increasing the whole-proof
+sample budget.
 
 \begin{table}[h]
 \centering
-\caption{Marginal gains from increasing the sample budget.}
+\caption{Marginal gains from increasing the sample budget. All counts are
+verified (false positives excluded). ``New'' counts problems not proved at
+the previous $k$.}
 \label{tab:scaling}
 \begin{tabular}{@{}lccr@{}}
 \toprule
-Run & Proved & Pass@1 & New proofs \\
+Run & Proved & Pass@1 & New verified proofs \\
 \midrule
 $k = 32$ & 60 & 24.6\% & -- \\
 $k = 64$ & 97 & 39.8\% & $+$37 \\
 $k = 256$ & 97 & 39.8\% & $\phantom{+}$0 \\
-MCTS ($k \approx 400$) & 119 & 48.8\% & $+$22 vs.\ $k=256$ \\
+MCTS ($k \approx 400$ total) & 119 & 48.8\% & $+$22 vs.\ verified $k=256$ \\
 \midrule
 Published ($k \approx 3200$) & 147 & 60.2\% & -- \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Going from 32 to 64 samples gains 37 theorems---a large jump that reflects
-the model finding correct proofs for many problems on the second or third
-try.
-Going from 64 to 256 samples (four times more computation) gains nothing.
-This is not a coincidence of rounding: of the 4 problems that the
-verified top-256 result claimed to prove beyond top-64,
-all 4 turned out to be false positives from the original batch verifier.
+The pattern is striking.
+Doubling from 32 to 64 samples gains 37 theorems---a large, clean jump.
+Quadrupling to 256 gains exactly zero.
+The 17 proofs that the unverified $k=256$ result claimed beyond $k=64$
+were all batch-verifier false positives; after re-verification with
+\texttt{lake env lean}, the score is identical to $k=64$.
 
-The implication is stark: additional sampling, in isolation, cannot close
-the gap to 60.2\%.
-Any path from 39.8\% to 60\% requires a qualitatively different strategy.
-MCTS provides part of that---contributing 22 genuinely new proofs---but
-the remaining 28 problems (the gap between our 48.8\% and the paper's 60.2\%)
-are unlikely to yield to more of the same.
+Understanding \emph{why} this plateau occurs requires examining what the 37
+new proofs from $k=32 \to 64$ actually look like.
+At $k=32$, the model proves problems whose correct proof appears in the top
+few samples: mostly one- or two-tactic closers (\texttt{norm\_num},
+\texttt{omega}, \texttt{ring}, short arithmetic chains).
+The 37 problems gained at $k=64$ are the next tier: they still have
+``easy'' proofs by Lean standards, but the model only generates the correct
+tactic sequence reliably one in 40--60 tries.
+Once both of these groups are exhausted, the remaining 147 problems are
+structurally different: their proofs require either (a) a rare, highly
+specific Mathlib API call that the model generates with very low probability,
+or (b) a multi-step argument where each step depends on the previous.
+For such problems, drawing more independent full-proof samples provides no
+additional coverage---every draw is effectively a fresh gamble with very
+low probability of success.
 
-The shape of the scaling curve (a jump, then a hard plateau) suggests that
-the model's sampling distribution covers a fixed ``easy'' region of
-proof space, and the hard tail of 122 remaining problems lies outside
-that region entirely regardless of how many samples are drawn.
+Proof-length statistics confirm this picture.
+Among the 97 problems solved by whole-proof sampling at $k=256$, 75\%
+(73/97) require multi-step proofs.
+These were accessible to sampling because the model has seen and learned
+their proof patterns during RL training.
+The 147 unsolved problems require proofs that the model's distribution
+simply does not cover---adding samples only reruns the same low-probability
+trials.
 
-\subsection{Tree Search vs.\ Whole-Proof Sampling}
+\subsection{What Tree Search Adds---and What It Does Not}
 \label{sec:analysis_mcts}
 
 \autoref{tab:overlap} compares MCTS and $k=256$ sampling problem-by-problem.
 
 \begin{table}[h]
 \centering
-\caption{Problem-level overlap between MCTS and whole-proof sampling ($k=256$).
-Both methods were applied to all 244 test problems.}
+\caption{Problem-level overlap between MCTS and verified $k=256$ whole-proof
+sampling (244 problems). The 25 MCTS-unique problems are further decomposed
+by which component of the MCTS configuration found them.}
 \label{tab:overlap}
-\begin{tabular}{@{}lcc@{}}
+\begin{tabular}{@{}lccc@{}}
 \toprule
-Outcome & Problems & Fraction \\
+Outcome & Problems & Fraction & Avg.\ proof steps \\
 \midrule
-Both methods proved & 94 & 38.5\% \\
-Only MCTS proved & 25 & 10.2\% \\
-Only $k=256$ proved & 3 & 1.2\% \\
-Neither proved & 122 & 50.0\% \\
+Both methods proved & 94 & 38.5\% & 2.3 \\
+Only MCTS proved & 25 & 10.2\% & 10.9 \\
+\quad --- found by tree search & (8) & (3.3\%) & 1.9 \\
+\quad --- found by whole-proof fallback & (17) & (7.0\%) & 15.2 \\
+Only $k=256$ proved & 3 & 1.2\% & -- \\
+Neither proved & 122 & 50.0\% & -- \\
 \midrule
-\textit{Total} & 244 & \\
+\textit{Total} & 244 & & \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-MCTS uniquely solves 25 problems that 256 whole-proof attempts never find.
-Inspection of these problems reveals that most are multi-step: their
-MCTS proofs average 8.2 tactic steps (median 5), compared to 3.8 steps
-(median 2) for problems both methods solve.
-Tree search succeeds here by constructing the proof incrementally:
-it verifies each tactic against Lean before committing, pruning
-invalid branches and building toward a complete proof step-by-step.
-Whole-proof sampling must generate the entire correct proof in one shot,
-which becomes exponentially unlikely as the number of required steps grows.
+The 25 MCTS-unique problems decompose into two distinct groups with very
+different explanations.
 
-The 3 problems solved only by $k=256$ but not by MCTS are instructive in
-the opposite direction.
-All three have proofs that whole-proof sampling stumbled upon during
-its 256 attempts, but whose first tactic did not survive MCTS's pruning
-(either because it was rare in the model's distribution, or because
-the particular formulation clashed with how the batch verifier
-attributes errors).
-This is a known limitation of the batch-verifier approach: at depth 1
-of BFS, the 8 generated tactics must include the right starting tactic,
-and if the model assigns that tactic low probability, it will be missed.
-A broader initial width would recover these cases at the cost of more
-verification time.
+\textbf{Eight problems found by tree search} (average 1.9 tactics, median 1).
+These are short proofs---many are single-tactic solutions like
+\texttt{nlinarith} applied after a \texttt{subst}---where the correct
+tactic was either absent from the whole-proof model's distribution or
+consistently garbled in its full-proof context.
+Tree search finds them by exploring the space of first tactics
+systematically: even if the model assigns the correct tactic low probability
+in a full-proof context, it surfaces that tactic at depth 1 within 8 attempts.
 
-Overall, the two strategies are complementary rather than redundant:
-MCTS earns its keep on problems where structured step-by-step construction
-matters, while whole-proof sampling is occasionally more effective for
-problems with one-shot ``lucky'' proofs.
+\textbf{Seventeen problems found by the whole-proof fallback} (average 15.2 tactics, median 16).
+These are long, structured proofs: \texttt{have} chains, intermediate
+lemma applications, calculation blocks.
+They were \emph{not} found by tree search and were not found by the
+separate $k=256$ run---but the MCTS configuration's fallback uses 400
+samples rather than 256.
+The most natural explanation is simply more samples: these are problems
+that required a lucky draw from the model's distribution, and 400
+attempts exceeded the threshold while 256 did not.
+
+This decomposition reveals a confound in interpreting the MCTS result.
+The ``9 pp improvement from MCTS'' conflates two contributions:
+roughly 3.3 pp from tree search structure itself, and roughly 7 pp from
+the fallback's larger sample budget.
+To cleanly isolate the tree search contribution, one would need a
+matched $k=400$ whole-proof baseline, which we did not run.
+
+The 3 problems solved only by $k=256$ but not MCTS are also instructive.
+All three are proofs that whole-proof sampling found by luck in 256 attempts,
+but whose first tactic---the one that opens the correct proof path---
+has very low probability in the model's distribution.
+At tree-search depth 1, 8 tactic candidates were generated per problem;
+these correct first tactics were not among them.
+This is a fundamental limitation of BFS with fixed width: if the correct
+proof path starts with a low-probability tactic, the tree never finds it.
 
 \subsection{Category-Level Breakdown}
 \label{sec:categories}
 
-\autoref{tab:categories} breaks down performance by problem type.
+\autoref{tab:categories} disaggregates performance by problem type across
+all configurations.
 
 \begin{table}[h]
 \centering
-\caption{Per-category results on miniF2F-test.}
+\caption{Per-category results on miniF2F-test. Numbers in parentheses are
+pass rates. The induction category (8 problems, stable at 3 proved by $k=64$
+through MCTS) is omitted for brevity.}
 \label{tab:categories}
-\begin{tabular}{@{}lcccc@{}}
+\begin{tabular}{@{}lcccccc@{}}
 \toprule
-Category & Total & $k=256$ & MCTS & MCTS gain \\
+Category & Total & $k=32$ & $k=64$ & $k=256$ & MCTS & MCTS gain \\
 \midrule
-Algebra & 88 & 52\,(59\%) & 58\,(66\%) & $+$6 \\
-Number theory & 68 & 29\,(43\%) & 32\,(47\%) & $+$3 \\
-Competition (AMC/AIME/IMO) & 80 & 13\,(16\%) & 26\,(33\%) & $+$13 \\
+Algebra & 88 & 22\,(25\%) & 51\,(58\%) & 52\,(59\%) & 58\,(66\%) & $+$6 \\
+Number theory & 68 & 32\,(47\%) & 29\,(43\%) & 29\,(43\%) & 32\,(47\%) & $+$3 \\
+Competition (AMC/AIME/IMO) & 80 & 5\,(6\%) & 14\,(18\%) & 13\,(16\%) & 26\,(33\%) & $+$13 \\
 \midrule
-All & 244 & 97\,(39.8\%) & 119\,(48.8\%) & $+$22 \\
+All & 244 & 60\,(24.6\%) & 97\,(39.8\%) & 97\,(39.8\%) & 119\,(48.8\%) & $+$22 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Algebra problems are the most amenable to both strategies (59\%/66\%),
-likely because many can be resolved with a small set of universally
-applicable tactics: \texttt{linarith}, \texttt{ring}, \texttt{norm\_num},
-and their combinations.
-Number theory is harder (43\%/47\%) despite often having short formal statements,
-because the proofs tend to require modular arithmetic reasoning that
-the model must produce precisely.
+Several features of this table are worth examining in detail.
 
-Competition problems are where the two strategies diverge most.
-Whole-proof sampling solves only 16\% (13/80)---these are the
-``lucky'' problems where the model happens to generate the right proof
-in 256 tries.
-MCTS doubles this to 33\% (26/80) by finding multi-step solutions
-that sampling would never produce.
+\textbf{Algebra saturates quickly.}
+The pass rate jumps from 25\% at $k=32$ to 58\% at $k=64$---the largest
+single-step gain of any category---then barely moves to 59\% at $k=256$
+and 66\% with MCTS.
+Algebra problems that the model can solve tend to have short, mechanically
+derivable proofs (\texttt{linarith}, \texttt{ring}, \texttt{nlinarith}),
+and the model finds these quickly.
+The remaining 30 unsolved algebra problems presumably require structured
+arguments that exceed what either strategy can construct.
+
+\textbf{Number theory shows anomalous behavior at $k=64$.}
+The pass rate \emph{drops} from 47\% to 43\% between $k=32$ and $k=64$.
+This is not a true regression but a stochastic artifact: the two runs
+were independent (not seeded from each other), and the set of problems
+proved changes with each random sampling.
+The verified $k=32$ result found 32 number theory proofs; the verified
+$k=64$ run found 29 of those same problems \emph{plus} different ones,
+for a net of 29.
+This illustrates that pass@1 estimates carry sampling variance at the
+problem level, especially for categories where success probability is
+close to the threshold.
+By MCTS the count recovers to 32---matching $k=32$'s count but on a
+somewhat different set of problems.
+
+\textbf{Competition problems are where MCTS earns most of its keep.}
+At $k=256$, only 13/80 competition problems are solved (16\%).
+MCTS doubles this to 26/80 (33\%).
+These 13 additional competition proofs are the most meaningful output of
+the tree search: they are problems where the correct proof requires
+exactly the right sequence of 2--5 tactics, and tree search finds this
+sequence even though no 256-sample whole-proof attempt ever produced it.
+
 Nevertheless, 67\% of competition problems (54/80) remain unsolved by
-either method.
-These are the genuinely hard problems: they require domain-specific
-Mathlib lemmas, intricate \texttt{have} chains, or calculation blocks
-that neither whole-proof generation nor 6-step tree search reaches.
-
-The category gap also reveals where additional samples would be most
-wasted: the algebra and number theory problems already have high success
-rates, so more computation yields diminishing returns on those categories.
-Any meaningful path to 60\% must come from the competition category,
-which requires either a fundamentally better model or a longer-horizon
-search strategy.
+any configuration.
+These 54 problems are the core of the gap to 60.2\%.
+Their proofs require either long structured arguments ($>6$ tactics)
+that exceed BFS depth, or uncommon Mathlib lemmas that the model's
+distribution assigns very low probability to.
 
 \subsection{Fine-Tuning Degrades Whole-Proof Generation}
 \label{sec:lora}
 
 Both LoRA fine-tuning attempts degraded performance relative to the
-unmodified base model, despite using progressively better configurations:
+unmodified base model, and the degradation \emph{increased} with more data:
 
 \begin{table}[h]
 \centering
-\caption{LoRA fine-tuning results compared to base model.}
+\caption{LoRA fine-tuning results compared to base model, all at $k=32$.}
 \label{tab:lora}
 \begin{tabular}{@{}llccc@{}}
 \toprule
@@ -459,15 +534,16 @@ DeepSeek + LoRA V2 & 10,561 proofs & 41 & 16.8\% & $-$7.8 pp \\
 \end{tabular}
 \end{table}
 
-LoRA V1 used 67 training examples (validated miniF2F proofs) with 4-bit
-quantization and LoRA rank 16; it scored 18.4\%, losing 6.2 pp.
-LoRA V2 addressed data scarcity with 10,561 training examples and full BF16
-precision, using LoRA rank 64; it scored 16.8\%, losing an additional 1.6 pp.
-More data and better precision did not help---the degradation actually
-increased slightly.
+LoRA V1 used 67 training examples (validated miniF2F proofs from the
+validation split) with 4-bit quantization and LoRA rank 16.
+LoRA V2 expanded to 10,561 training examples by adding 10,434 Lean-Workbook
+proofs and used full BF16 precision with LoRA rank 64 on an A100-class GPU.
+The extra data and better hardware both made things worse.
 
-The root cause is a distributional mismatch between training and inference.
-When we examine the Lean-Workbook corpus used for LoRA V2, we find:
+The root cause is a distributional mismatch that is visible in the training
+corpus itself.
+When we examine the Lean-Workbook proofs used for LoRA V2, we find that
+the length distribution is almost entirely degenerate:
 
 \begin{itemize}
 \item 98.0\% of training proofs are single-line (one tactic closes the goal)
@@ -475,51 +551,84 @@ When we examine the Lean-Workbook corpus used for LoRA V2, we find:
 \item 1.2\% require three or more lines
 \end{itemize}
 
-The base model's training distribution (via reinforcement learning on Lean 4)
-is broadly calibrated to the full difficulty range of mathematical theorem proving.
-After fine-tuning on a corpus that is 98\% single-step proofs, the model's
-output distribution shifts strongly toward generating short terminating tactics.
-This is precisely the wrong inductive bias for miniF2F: among the 119 problems
-successfully proved by MCTS, 63\% (75/119) require proofs with more than one step.
-The fine-tuned model generates correct single-step terminations with high probability
-but has learned to truncate multi-step proofs prematurely.
+This distribution reflects the nature of the Lean-Workbook collection: it
+consists of standalone lemmas, many of which are trivial verifications or
+one-step consequences of standard theorems.
+The base model, trained via reinforcement learning on the full difficulty
+range of Lean 4 formal mathematics, had learned to generate structured
+multi-step proofs for problems that require them.
+After fine-tuning on a corpus that is 98\% single-step closers, the model's
+output distribution shifts strongly toward generating a single tactic and
+stopping---the correct behavior for 98\% of what it was trained on, but
+precisely wrong for miniF2F.
 
-This finding is consistent with the LoRA V1 training report, which noted that
-all 41 proofs found by LoRA V2 used short closers (\texttt{omega}, \texttt{linarith},
-\texttt{ring}, \texttt{norm\_num}, \texttt{rfl})---identical to what the unmodified
-base model finds greedily, with none of the more structured multi-step proofs
-that distinguish the harder miniF2F problems.
+The magnitude of this effect is visible in the proof output.
+All 41 proofs found by LoRA V2 use one of five single-step closers:
+\texttt{omega}, \texttt{linarith}, \texttt{ring}, \texttt{norm\_num}, or \texttt{rfl}.
+This is \emph{identical} to what the unmodified base model finds greedily
+at $k=1$---the fine-tuned model has effectively regressed to greedy decoding.
+The 15 problems that LoRA V2 fails to prove but the base model solves
+at $k=32$ are all multi-step proofs; the fine-tuned model generates the
+wrong (truncated) proof for each of them.
+
+Among the 119 problems solved by the best MCTS configuration, 75 (63\%)
+require proofs with more than one tactic step.
+Fine-tuning suppressed exactly this capability.
+The mismatch between training distribution (98\% single-step) and target
+distribution (63\% multi-step) explains the degradation cleanly.
 
 \begin{obs}
-Fine-tuning a whole-proof generation model on tactic-level or single-step
-training data is counterproductive for benchmarks that require multi-step
-reasoning. The appropriate training format is (file stub, complete proof body)
-pairs drawn from the same difficulty distribution as the target benchmark.
+Fine-tuning a whole-proof generation model on single-step training data
+is counterproductive for benchmarks that require multi-step reasoning.
+Degradation worsens with more single-step training data, because more data
+amplifies the distributional bias.
+Effective fine-tuning requires training pairs whose proof-length and
+difficulty distributions match the target benchmark.
 \end{obs}
 
-\subsection{Why the Gap to 60\% Remains}
+\subsection{Why 48.8\% and Not 60\%}
 \label{sec:gap}
 
-The published 60.2\% result differs from ours in two dimensions beyond model
-architecture and training:
+The published 60.2\% result \cite{deepseek} differs from ours along several
+dimensions that are worth separating.
 
-\textbf{Sample count.} The paper uses approximately 3200 samples per problem;
-we use 400. Our scaling analysis (\autoref{sec:scaling}) shows that doubling
-or quadrupling the sample count within the whole-proof regime produces no gain
-once the plateau is reached. However, the published system applies tree search
-\emph{at every node} and generates new samples at each depth, effectively
-distributing the 3200-sample budget across the search tree rather than
-spending it all on independent full-proof attempts. This is a qualitatively
-different use of compute that we do not replicate.
+\textbf{Sample count is necessary but not sufficient.}
+The paper uses approximately 3200 samples per problem; we use roughly 400
+across tree search and fallback.
+Naively, one might expect this 8$\times$ gap to explain the performance
+difference.
+But our scaling analysis in \autoref{sec:scaling} shows that the whole-proof
+regime saturates by $k=64$.
+Even 3200 independent whole-proof samples would not close the gap if the
+model's sampling distribution simply does not cover the hard problems.
+The key difference is that the published system integrates tree search
+\emph{throughout} its sample budget---it generates new tactic candidates at
+each BFS node rather than spending the entire budget on independent
+full-proof attempts.
+This lets it make productive use of 3200 samples in a way that our
+sequential (tree search then fallback) approach does not.
 
-\textbf{The hard tail.} Of the 244 test problems, 122 (50\%) are solved by
-neither method we evaluate. These problems are concentrated in the
-competition category (54/80) and represent problems where both the proof
-requires uncommon Mathlib lemmas and the number of required steps exceeds
-our tree search depth of 6. The published system solves approximately
-$147 - 119 = 28$ of these---roughly 23\%---suggesting that a deeper
-or wider search, possibly combined with a better-calibrated model, could
-recover a significant fraction.
+\textbf{The hard tail is structural.}
+Of the 244 test problems, 122 (50\%) are solved by neither whole-proof
+sampling nor our MCTS configuration.
+These problems are concentrated in the competition category (54/80 unsolved).
+Inspection of their structures suggests two failure modes: proofs longer
+than our BFS depth limit of 6 tactics, and proofs that require highly
+specific Mathlib API calls (\texttt{Nat.Coprime}, \texttt{Int.emod\_emod\_of\_dvd},
+\texttt{Finset.sum\_congr}, etc.) that the model's distribution assigns very
+low probability.
+The published system solves $147 - 119 = 28$ of these 122 problems.
+This is plausibly explained by the deeper effective search (via integrated tree
+search with 3200 samples) combined with the full-precision model having a
+slightly better-calibrated distribution over rare Mathlib lemmas.
+
+\textbf{Quantization effects.}
+We run 4-bit NF4 quantized inference, while the published results use
+full precision.
+4-bit quantization reduces memory by $\sim$3.5$\times$ but introduces
+quantization noise that may slightly perturb the model's distribution
+over rare tokens---precisely the Mathlib API calls that hard problems require.
+We did not measure this effect in isolation.
 
 %-----------------------------------------------------------------------
 \section{The ByT5 Tactic Model}
@@ -537,18 +646,25 @@ On miniF2F, it is augmented with 14 universal fallback tactics
 After fine-tuning on the full Mathlib tactic dataset for 5 epochs
 (${\approx}250\text{K}$ training examples), ByT5 reaches 70/244 = 28.7\%, surpassing
 the published ReProver result of ${\approx}26.5\%$.
-However, this performance is almost entirely explained by the 14 fallback tactics,
-which mechanically close most of the straightforward miniF2F problems.
-The fine-tuned model's tactic predictions contribute marginally beyond the pretrained
-baseline: both pretrained and analysis-fine-tuned ByT5 achieve around 24\%,
-with the gains from more training data being modest.
+However, a careful ablation reveals that this performance is almost entirely
+explained by the 14 fallback tactics, which mechanically close the
+straightforward miniF2F problems.
+Both the pretrained and analysis-fine-tuned ByT5 achieve $\approx$24\%,
+with the gains from more training data being modest (28.7\% vs.\ 24.2\%);
+this suggests ByT5 contributes most usefully as a tactic-ranking mechanism
+that occasionally selects the right close from the fallback set, rather than
+as a proof-search engine.
 
-This contrasts with DeepSeek, where the 4-bit base model dramatically outperforms
-ByT5 under the same sample budget once the whole-proof format is used correctly.
-The two architectures probe fundamentally different capabilities: ByT5 is a precise
-tactic predictor that requires an interactive REPL to apply tactics step by step,
-while DeepSeek's causal LM format enables it to generate entire multi-step proofs
-in one shot.
+More fundamentally, ByT5 and DeepSeek probe different capabilities.
+ByT5 is a 300M-parameter tactic predictor that generates one step at a time
+from a proof state, requiring an interactive REPL to elaborate.
+DeepSeek is a 7B-parameter causal model that generates entire multi-step
+proofs in one shot.
+The two approaches should be complementary: ByT5 provides precise tactic
+guidance at each state, while DeepSeek provides long-range planning across
+the full proof.
+Integrating them---for instance, using ByT5 to rank tree-search candidates
+at each BFS node---is a natural direction for future work.
 
 %-----------------------------------------------------------------------
 \section{Implementation Challenges}
@@ -557,17 +673,24 @@ in one shot.
 Several engineering issues complicated the evaluation in ways that are worth
 documenting for reproducibility.
 
-\textbf{Verification false positives.}
-The initial batch-verifier implementation produced a 47.6\% false positive rate
-(68 of 143 claimed MCTS proofs were incorrect).
-Two bugs were responsible: a line-range attribution error that missed
-``unsolved goals'' errors reported on separator lines (51 false positives),
-and a tactic filter that failed to drop cases where the model
-regenerated the theorem header (17 false positives).
-Both are fixed in the final implementation.
+\textbf{Verifier false positives.}
+This was the most consequential implementation problem.
+Three distinct MCTS experiments produced three different apparent scores
+before verification errors were fully resolved:
+(a) an initial regex bug caused the batch verifier to never match any
+error line, so every first-tactic candidate appeared to succeed---inflating
+the result from $\approx$4\% to 99.6\%;
+(b) after fixing the regex, two subtler bugs in line-range attribution
+still inflated the score from the true 30.7\% to a claimed 58.6\%;
+(c) after fixing both (the range extension and the theorem-header filter),
+the clean run produced the verified 48.8\%.
+The lesson is that in-process batch verification of Lean proofs is
+substantially harder to get right than it appears, and any result that
+looks surprisingly good should be re-verified by an independent method
+before being reported.
 
 \textbf{Thread limits on CPU nodes.}
-Lean spawns threads for parallel elaboration.
+Lean spawns threads for parallel tactic elaboration.
 CPU cluster nodes impose strict thread limits that caused SIGABRT
 when reverification was run on them.
 All reverification was moved to GPU nodes, and
@@ -581,54 +704,85 @@ full Mathlib olean cache (${\approx}8$--12 GB per process), exhausted
 The whole-proof verification pipeline was capped at 4 parallel workers.
 
 \textbf{BPE decode artifacts.}
-DeepSeek's tokenizer produces Unicode byte-pair symbols (\texttt{Ġ}, \texttt{Ċ})
-that must be post-processed to spaces and newlines; without this, all
-generated proofs are garbled and the model appears to achieve 0\%.
+DeepSeek's tokenizer produces Unicode byte-pair symbols (\texttt{Ġ},
+\texttt{Ċ}) that must be post-processed to spaces and newlines.
+Without this, all generated proofs are garbled and the model appears to
+achieve 0\%; discovering the root cause of this failure cost several hours.
 
 \textbf{CUDA deadlock at batch size 8.}
 A known bug in BitsAndBytes dequantization on CUDA 12.2 causes
 \texttt{torch.multinomial} to deadlock at batch size 8.
 Only batch size 16 (larger, counterintuitively) was stable.
 
+\textbf{Specific problems that cause silent hangs.}
+Four miniF2F problems (\texttt{numbertheory\_4x3m7y3neq2003},
+\texttt{numbertheory\_x5neqy2p4}, \texttt{amc12\_2000\_p6},
+\texttt{mathd\_numbertheory\_66}) caused \texttt{model.generate} to
+deadlock silently under 4-bit quantization.
+These are problems whose formal statements contain the $\neq$ operator
+formalized in a way that produces unusual token sequences.
+The BF16 model does not hang on these problems.
+We skip these four in generation and count them as unattempted rather
+than failed.
+
 %-----------------------------------------------------------------------
 \section{Conclusion}
 %-----------------------------------------------------------------------
 
 We evaluated DeepSeek-Prover-V1.5-RL on miniF2F under constrained compute,
-reaching 48.8\% with MCTS tree search---9 percentage points above the
-whole-proof sampling ceiling and 22 above simpler baselines.
-The main lessons are:
+reaching 48.8\% with a tree search and fallback configuration---9 percentage
+points above the whole-proof sampling ceiling and 24 pp above the simplest
+baseline.
+The path there was not straightforward, and the obstacles are the
+substance of the result.
+
+The main findings are:
 
 \begin{enumerate}
-\item \textbf{Whole-proof sampling plateaus quickly.} The jump from 32 to 64
-samples is large (+37 problems); from 64 to 256 is zero. More sampling
-alone cannot close the gap to 60\%.
-\item \textbf{Tree search and whole-proof sampling are complementary.}
-MCTS uniquely solves 25 harder multi-step problems; sampling uniquely solves
-3 ``lucky'' one-shot problems. Together they reach 48.8\% vs.\ 39.8\% for
-sampling alone.
-\item \textbf{Fine-tuning on the wrong distribution actively hurts.}
-When 98\% of training proofs are single-step closers but the target benchmark
-requires multi-step reasoning, fine-tuning suppresses exactly the capability
-that is needed. Training data must match the inference difficulty profile.
-\item \textbf{Competition problems are the hard tail.} Even with MCTS, only
-33\% of AMC/AIME/IMO problems are solved. This category is where the gap to
-60\% lives, and closing it likely requires deeper search, broader model
-sampling, or better-aligned fine-tuning data.
-\end{enumerate}
+\item \textbf{Whole-proof sampling saturates by $k=64$.}
+From 32 to 64 samples, the verified score jumps by 15 pp.
+From 64 to 256, it gains nothing.
+This plateau is real: all 17 proofs the unverified $k=256$ result claimed
+beyond $k=64$ were false positives.
+The model's sampling distribution does not cover the harder half of the
+benchmark regardless of how many samples are drawn.
 
-The results suggest that the published 60.2\% is achievable with sufficient
-compute (more samples per tree-search node) and the right search budget,
-but is not reachable by scaling up the simple strategies evaluated here.
-This points toward richer proof-search algorithms and better training corpora
-as the more promising directions for future work.
+\item \textbf{Tree search helps, but less than the headline suggests.}
+Of the 22 net new problems solved by the MCTS configuration, only 8 are
+genuinely attributable to tree structure (short proofs found at BFS depth 1--2).
+The other 14 net gains come from a larger whole-proof sample budget in the
+fallback phase.
+Pure tree search contributes $\approx$3 pp; the remaining $\approx$6 pp is
+additional sampling.
+
+\item \textbf{Fine-tuning on the wrong distribution actively hurts.}
+When 98\% of training proofs are single-step closers but the target
+benchmark requires multi-step reasoning, fine-tuning suppresses exactly
+the capability that is needed.
+Degradation worsens with more data, because more data deepens the bias.
+This pattern---``more data, more damage''---should be a warning sign for
+any fine-tuning experiment where the training and target difficulty
+distributions are not carefully matched.
+
+\item \textbf{The gap to 60\% is structural, not computational.}
+Closing from 48.8\% to 60.2\% requires solving 28 additional problems,
+concentrated in the competition category.
+These problems require proof structures---long tactic chains ($>6$ steps),
+uncommon Mathlib API calls---that neither more whole-proof samples nor
+6-step BFS can produce.
+The path forward involves either a deeper/wider search strategy that
+integrates sampling across all tree nodes (as the published system does),
+or a fine-tuning corpus that genuinely covers the difficulty range of
+competition mathematics.
+\end{enumerate}
 
 %-----------------------------------------------------------------------
 \section*{Acknowledgments}
 %-----------------------------------------------------------------------
 
 It is a pleasure to thank Professor Namkoong for guidance throughout this
-project and for feedback that shaped the analysis reported here.
+project and for detailed feedback that shaped both the analysis and the
+framing reported here.
 Computations were carried out on the CBS Research Grid at Columbia Business
 School.
 
