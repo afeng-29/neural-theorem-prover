@@ -1,0 +1,216 @@
+
+\documentclass[openany, amssymb, psamsfonts]{amsart}
+\usepackage{enumerate}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue}
+
+\title{Outline: Neural Theorem Proving on miniF2F \\
+{\normalsize Scaling, Tree Search, and the Limits of Fine-Tuning}}
+
+\author{Aslan Feng}
+
+\date{Columbia Business School REU, Summer 2026 \\
+Mentor: Professor Namkoong}
+
+\begin{document}
+\maketitle
+
+\tableofcontents
+
+%-----------------------------------------------------------------------
+\section*{Abstract (target: 200 words)}
+%-----------------------------------------------------------------------
+\begin{itemize}
+  \item Setting: one A40 GPU, 4-bit quantization, $\leq$400 samples per problem
+  \item Main result: 48.8\% on miniF2F-test (vs.\ published 60.2\%)
+  \item Three findings in one sentence each:
+  \begin{itemize}
+    \item Whole-proof sampling saturates at $k=64$ (39.8\%); $k=256$ gains zero
+    \item MCTS adds 22 net proofs, but only 8 are from tree structure; 14 from larger fallback budget
+    \item LoRA fine-tuning degrades both times: 98\% single-step training vs.\ 63\% multi-step target
+  \end{itemize}
+  \item Punchline: the gap to 60\% is structural (hard competition tail), not a compute-scaling problem
+\end{itemize}
+
+%-----------------------------------------------------------------------
+\section{Introduction}
+%-----------------------------------------------------------------------
+
+\textit{Goal: motivate the project, frame ``what went wrong'' as the main story, state the three phases.}
+
+\begin{enumerate}
+  \item Context: LLMs on formal math; DeepSeek achieves 60.2\% with 3200 samples + MCTS
+  \item Our question: how much of that is recoverable under constrained compute?
+  \item Answer: 48.8\%---but the path there is the substance of the paper
+  \item Three-phase arc (one paragraph each):
+  \begin{enumerate}[{Phase} 1.]
+    \item \textit{Scaling whole-proof sampling.} $k=32 \to 64$: large gain. $k=64 \to 256$: zero (all 17 extra claimed proofs were false positives).
+    \item \textit{Tree search.} MCTS adds 22 net proofs; decompose into 8 (tree structure) vs.\ 17 (extra fallback samples). Verifier bugs inflated early runs to 58.6\%.
+    \item \textit{Fine-tuning.} Both LoRA attempts hurt. Root cause: 98\% of training data is single-step; miniF2F needs multi-step.
+  \end{enumerate}
+  \item Roadmap sentence
+\end{enumerate}
+
+%-----------------------------------------------------------------------
+\section{Background}
+%-----------------------------------------------------------------------
+
+\subsection{The miniF2F Benchmark}
+\begin{itemize}
+  \item 244 test problems from AMC/AIME/IMO, formalized in Lean 4
+  \item Three categories: algebra (88), number theory (68), competition/AMC/AIME/IMO (80), induction (8)
+  \item Difficulty range: one-line \texttt{norm\_num} to 20+ step structured arguments
+  \item Format: \texttt{theorem NAME : STMT := sorry} $\to$ replace \texttt{sorry}
+\end{itemize}
+
+\subsection{DeepSeek-Prover-V1.5-RL}
+\begin{itemize}
+  \item 7B causal LM, RL-trained on Lean 4 proof feedback
+  \item Whole-proof generation: outputs complete proof body in one forward pass
+  \item Published result: 60.2\% with $\sim$3200 samples + MCTS at every node
+  \item Our setup: 4-bit NF4 quantization (BitsAndBytes), single A40 GPU
+\end{itemize}
+
+\subsection{Lean 4 Verification}
+\begin{itemize}
+  \item \texttt{lake build}: compiles against Mathlib; exit 0 + no \texttt{sorry} warning = proof accepted
+  \item Batch verification: shared \texttt{ProofGoals.lean}, errors attributed by line range
+  \item Parallel verification: capped at 4 workers ($\sim$8--12 GB olean cache per process)
+  \item Getting this right was the hardest engineering problem: three iterations of the verifier before correct
+\end{itemize}
+
+%-----------------------------------------------------------------------
+\section{Methods}
+%-----------------------------------------------------------------------
+
+\subsection{Whole-Proof Sampling}
+\begin{itemize}
+  \item $k \in \{32, 64, 256\}$ independent attempts, temperature $T=1.0$, $p=0.95$
+  \item 256-token budget per proof; batch size 16 (batch 8 deadlocks under 4-bit on CUDA 12.2)
+  \item Verification: up to 4 parallel \texttt{lake env lean} calls
+\end{itemize}
+
+\subsection{Monte Carlo Tree Search (MCTS)}
+\begin{itemize}
+  \item BFS, depth $\leq 6$, width 8 (tactic candidates per node)
+  \item Node classification: (complete, valid partial, invalid) based on error type
+  \item Two verifier bugs fixed: range extension (+1 line for separator), theorem-header tactic filter
+  \item 120-second tree search budget, then whole-proof fallback with 400 samples total
+\end{itemize}
+
+\subsection{LoRA Fine-Tuning}
+\begin{itemize}
+  \item V1: 67 examples (miniF2F validation proofs), 4-bit, rank 16
+  \item V2: 10,561 examples (67 + 10,494 Lean-Workbook), BF16, rank 64, A100
+  \item Training format: (file stub, complete proof body) pairs matching inference format
+\end{itemize}
+
+%-----------------------------------------------------------------------
+\section{Results}
+%-----------------------------------------------------------------------
+
+\textit{Main results table (all 9 configurations): ByT5 pretrained/FT/ep5, DeepSeek base $k=32/64/256$, LoRA V1/V2, MCTS. Plus published references.}
+
+\begin{itemize}
+  \item Best result: MCTS 119/244 = 48.8\%
+  \item All results re-verified independently (fix false positive risk from batch verifier)
+  \item ByT5 included for completeness; detailed in \S\ref{sec:byt5}
+\end{itemize}
+
+%-----------------------------------------------------------------------
+\section{Analysis}
+%-----------------------------------------------------------------------
+
+\subsection{Why Whole-Proof Sampling Saturates at 39.8\%}
+\begin{itemize}
+  \item Table: $k=32$ (60), $k=64$ (97, $+$37), $k=256$ (97, $+$0), MCTS (119, $+$22), published (147)
+  \item Key point: the $+$0 at $k=256$ is genuine---all 17 claimed extras were false positives
+  \item Why the plateau:
+  \begin{itemize}
+    \item $k=32 \to 64$ gains: ``second-tier'' problems whose correct proof appears on attempt 2--5
+    \item Beyond $k=64$: harder problems need rare Mathlib calls or $>$2-step proofs; more samples = more low-probability reruns, not more coverage
+    \item Proof-length data: 75\% of $k=256$-proved problems are multi-step; these were already in the model's distribution from RL training
+  \end{itemize}
+\end{itemize}
+
+\subsection{What Tree Search Adds---and What It Does Not}
+\begin{itemize}
+  \item Overlap table: both 94, MCTS-only 25, $k=256$-only 3, neither 122
+  \item Decompose the 25 MCTS-unique problems:
+  \begin{itemize}
+    \item 8 from tree search: short proofs (avg 1.9 steps); correct tactic found at BFS depth 1--2
+    \item 17 from whole-proof fallback: long proofs (avg 15.2 steps); fallback used 400 vs.\ 256 samples
+  \end{itemize}
+  \item ``Both'' category avg 2.3 steps; MCTS-only avg 10.9 steps
+  \item The 3 $k=256$-only: low-probability first tactic; BFS width-8 missed it
+  \item Net isolated tree-search contribution: $\sim$3 pp (not 9 pp); the rest is sample budget
+\end{itemize}
+
+\subsection{Category-Level Breakdown}
+\begin{itemize}
+  \item Table: algebra/NT/competition $\times$ $k=32/64/256$/MCTS (4-column)
+  \item Algebra: saturates by $k=64$ (58\%); only $+$7 pp more from MCTS
+  \item NT: $k=32$ appears better than $k=64$ (stochastic artifact, independent runs); recovers at MCTS
+  \item Competition: MCTS doubles pass rate from 16\% to 33\%; 54/80 still unsolved (hard tail)
+  \item Hard tail concentration: competition category is where the gap to 60\% lives
+\end{itemize}
+
+\subsection{Fine-Tuning Degrades Whole-Proof Generation}
+\begin{itemize}
+  \item Table: base 60, LoRA V1 45 ($-$6.2 pp), LoRA V2 41 ($-$7.8 pp)
+  \item More data $=$ more damage: V2 is worse than V1 despite $157\times$ more examples
+  \item Root cause: 98\% of Lean-Workbook proofs are single-line; 63\% of proved miniF2F problems are multi-step
+  \item Evidence: all 41 LoRA V2 proofs use only 5 single-step closers (omega, linarith, ring, norm\_num, rfl)
+  \item Observation: fine-tuning on wrong distribution suppresses exactly the capability needed
+\end{itemize}
+
+\subsection{Why 48.8\% and Not 60\%}
+\begin{itemize}
+  \item Sample integration: published system puts 3200 samples \emph{into the tree} (new samples at each node); we do tree-then-fallback sequentially
+  \item Hard tail: 122/244 (50\%) unsolved; concentrated in competition; require $>$6-step proofs or rare Mathlib API
+  \item Quantization: 4-bit noise may suppress rare token probability (the exact Mathlib calls hard problems need)
+\end{itemize}
+
+%-----------------------------------------------------------------------
+\section{The ByT5 Tactic Model}
+\label{sec:byt5}
+%-----------------------------------------------------------------------
+\begin{itemize}
+  \item ByT5-small (300M), byte-level tokenizer, fine-tuned on LeanDojo tactic data
+  \item Reaches 28.7\% (ep5) vs.\ 24.2\% pretrained; marginal gain from fine-tuning
+  \item Performance mostly explained by 14 universal fallback tactics, not ByT5's tactic predictions
+  \item Contrast with DeepSeek: ByT5 = precise per-state tactic predictor; DeepSeek = long-range proof planner
+  \item Future direction: combine (ByT5 ranks MCTS candidates at each node)
+\end{itemize}
+
+%-----------------------------------------------------------------------
+\section{Implementation Challenges}
+%-----------------------------------------------------------------------
+\begin{itemize}
+  \item \textbf{Verifier false positive saga} (three runs, three bugs):
+  \begin{enumerate}
+    \item Regex never matched Lean output format $\to$ 99.6\% (all tactics appeared to succeed)
+    \item Regex fixed; range-attribution bug + theorem-header bug remain $\to$ 58.6\% claimed, 30.7\% true
+    \item Both bugs fixed $\to$ 48.8\% verified
+  \end{enumerate}
+  \item Thread limits: SIGABRT on CPU nodes; moved to GPU + \texttt{LEAN\_NUM\_THREADS=1}
+  \item Memory: 4 parallel workers cap (olean cache $\approx$8--12 GB/process)
+  \item BPE decode: Ġ/Ċ symbols $\to$ must post-process to spaces/newlines or all output is garbled
+  \item CUDA deadlock: batch 8 hangs under BitsAndBytes on CUDA 12.2; batch 16 stable
+  \item Four ``hang'' problems with $\neq$ in goal; skipped in generation
+\end{itemize}
+
+%-----------------------------------------------------------------------
+\section{Conclusion}
+%-----------------------------------------------------------------------
+
+\textit{Four-item list mirroring introduction's three phases plus the broader lesson.}
+
+\begin{enumerate}
+  \item Whole-proof sampling saturates by $k=64$; the gap to 60\% is not a compute problem within this paradigm
+  \item Tree search helps but the isolated contribution is $\sim$3 pp from structure + $\sim$6 pp from sample budget; confound matters
+  \item Fine-tuning on mismatched distribution hurts; more data worsens it; distribution match is a prerequisite
+  \item Competition category (54/80 unsolved) is the bottleneck; closing the gap requires deeper search or better training coverage of this problem type
+\end{enumerate}
+
+\end{document}
