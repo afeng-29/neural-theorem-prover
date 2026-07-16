@@ -748,10 +748,12 @@ The model's sampling distribution does not cover the harder half of the
 benchmark regardless of how many samples are drawn.
 
 \item \textbf{Tree search helps, but less than the headline suggests.}
-Of the 22 net new problems solved by the MCTS configuration, only 8 are
-genuinely attributable to tree structure (short proofs found at BFS depth 1--2).
-The other 14 net gains come from a larger whole-proof sample budget in the
-fallback phase.
+Of the 25 problems uniquely solved by MCTS (but not by $k=256$), 8 are
+genuinely attributable to tree structure (short proofs found at BFS depth 1--2),
+and 17 come from the larger whole-proof sample budget in the fallback phase
+(400 vs.\ 256 samples).
+Since 3 problems solved by $k=256$ are not solved by MCTS, the net gain is
+$25 - 3 = 22$.
 Pure tree search contributes $\approx$3 pp; the remaining $\approx$6 pp is
 additional sampling.
 

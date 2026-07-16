@@ -26,7 +26,7 @@ Mentor: Professor Namkoong}
   \item Three findings in one sentence each:
   \begin{itemize}
     \item Whole-proof sampling saturates at $k=64$ (39.8\%); $k=256$ gains zero
-    \item MCTS adds 22 net proofs, but only 8 are from tree structure; 14 from larger fallback budget
+    \item MCTS: 25 MCTS-unique (8 tree structure $+$ 17 fallback) minus 3 $k=256$-unique $=$ 22 net gain
     \item LoRA fine-tuning degrades both times: 98\% single-step training vs.\ 63\% multi-step target
   \end{itemize}
   \item Punchline: the gap to 60\% is structural (hard competition tail), not a compute-scaling problem
