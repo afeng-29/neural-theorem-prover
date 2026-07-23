@@ -45,7 +45,7 @@ Mentor: Professor Namkoong}
   \item Three-phase arc (one paragraph each):
   \begin{enumerate}[{Phase} 1.]
     \item \textit{Scaling whole-proof sampling.} $k=32 \to 64$: large gain. $k=64 \to 256$: zero (all 17 extra claimed proofs were false positives).
-    \item \textit{Tree search.} MCTS adds 22 net proofs; decompose into 8 (tree structure) vs.\ 17 (extra fallback samples). Verifier bugs inflated early runs to 58.6\%.
+    \item \textit{BFS tactic search.} 25 uniquely solved (8 tree structure + 17 fallback) minus 3 $k=256$-unique $=$ 22 net. Note: algorithm is plain BFS, not true MCTS (no UCB/rollouts); ``MCTS'' used loosely following field convention. Verifier bugs inflated early runs to 58.6\%.
     \item \textit{Fine-tuning.} Both LoRA attempts hurt. Root cause: 98\% of training data is single-step; miniF2F needs multi-step.
   \end{enumerate}
   \item Roadmap sentence
@@ -90,7 +90,7 @@ Mentor: Professor Namkoong}
   \item Verification: up to 4 parallel \texttt{lake env lean} calls
 \end{itemize}
 
-\subsection{Monte Carlo Tree Search (MCTS)}
+\subsection{BFS Tactic Search (called ``MCTS'' loosely)}
 \begin{itemize}
   \item BFS, depth $\leq 6$, width 8 (tactic candidates per node)
   \item Node classification: (complete, valid partial, invalid) based on error type

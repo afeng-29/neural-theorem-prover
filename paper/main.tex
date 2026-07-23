@@ -86,11 +86,12 @@ Starting from DeepSeek-Prover-V1.5-RL with whole-proof generation,
 we document a series of experiments whose failures are as informative as their successes.
 Whole-proof sampling reaches 39.8\% pass@1 at 64 samples per problem, then plateaus
 completely: going to 256 samples yields zero additional verified proofs.
-Adding Monte Carlo Tree Search (BFS, depth at most 6) improves the score to 48.8\%,
-but the mechanism is more nuanced than it first appears: only 8 of the 25
-problems uniquely solved by the MCTS configuration are attributable to tree
+Adding a BFS tactic search (depth at most 6, width 8) improves the score to 48.8\%,
+but the mechanism is more nuanced than it first appears: of the 25
+problems uniquely solved by the tactic search configuration, only 8 are attributable to tree
 structure itself; the remaining 17 come from the larger whole-proof fallback budget
-(400 vs.\ 256 samples), making the tree search's isolated contribution modest.
+(400 vs.\ 256 samples); and 3 problems solved by $k=256$ are not solved by tactic search,
+giving a net gain of $25 - 3 = 22$ problems.
 Two rounds of LoRA fine-tuning both degraded performance.
 We trace this failure to a distributional mismatch: 98\% of the available
 fine-tuning proofs are single-line tactic closers, while 63\% of the problems
@@ -135,14 +136,16 @@ but quadrupling it again to 256 yields nothing: all 17 proofs the unverified
 result claimed beyond 64 samples turned out to be verifier false positives.
 The model's sampling distribution appears to ``max out'' on the set of problems
 it can reach by the 64th attempt.
-\emph{Phase 2: tree search.}
+\emph{Phase 2: BFS tactic search.}
 Adding BFS-guided tactic-level search partially breaks the plateau, but
 the contribution is smaller than it appears.
-Of the 25 additional problems the MCTS configuration solves, 8 are
-genuinely attributable to the tree structure itself---these are short
-proofs (average 1.9 tactics) that whole-proof sampling never generates.
+Of the 25 problems the tactic search configuration uniquely solves, 8 are
+genuinely attributable to the tree structure itself---short proofs
+(average 1.9 tactics) that whole-proof sampling never generates.
 The other 17 come from the whole-proof fallback having 400 samples
 instead of 256, not from tree search at all.
+Meanwhile 3 problems solved by $k=256$ are not solved by tactic search,
+so the net gain is $25 - 3 = 22$.
 \emph{Phase 3: fine-tuning.}
 Two rounds of LoRA fine-tuning, with progressively more training data and
 better hardware, both made things worse.
@@ -243,11 +246,17 @@ stable batch size under 4-bit quantization.
 Batch size 8 produces deadlocks in \texttt{torch.multinomial} on CUDA 12.2 due
 to a known interaction with BitsAndBytes dequantization.
 
-\subsection{Monte Carlo Tree Search}
+\subsection{BFS Tactic Search}
 \label{sec:method_mcts}
 
-The tree-search variant explores proof tactics step-by-step using BFS to
-depth at most 6, with width 8 (eight tactic candidates generated per node).
+The tactic search variant explores proof steps using breadth-first search
+to depth at most 6, with width 8 (eight tactic candidates generated per node).
+We note that this algorithm is commonly called ``MCTS'' in the theorem-proving
+literature, including by the DeepSeek-Prover paper we compare against; however,
+our implementation uses plain BFS with no UCB selection and no Monte Carlo rollouts.
+We follow the field's loose convention in the tables and figures, but use
+\emph{tactic search} or \emph{BFS search} in the body text.
+
 At each node, the model's prompt includes the formal theorem statement and
 the sequence of tactics applied so far; it is asked to generate the next
 single tactic.
@@ -258,11 +267,11 @@ Candidates are classified as: (a) complete---no errors; (b) valid partial---only
 ``unsolved goals'' errors remain; (c) invalid---any other error.
 Only valid partials are retained for the next depth.
 
-After the tree search exhausts its 120-second budget without finding a proof,
+After the search exhausts its 120-second budget without finding a proof,
 the problem enters a whole-proof fallback phase: the model generates up to 400
 independent whole-proof candidates via the standard generation procedure.
-This combined budget of tree search followed by fallback constitutes the MCTS
-configuration reported in \autoref{tab:main_results}.
+This combined budget of tactic search followed by fallback constitutes the
+BFS configuration reported in \autoref{tab:main_results}.
 
 \subsection{LoRA Fine-Tuning}
 
@@ -290,9 +299,9 @@ using \texttt{lake env lean} on a GPU node, independently of the batch verifier.
 
 \begin{table}[h]
 \centering
-\caption{miniF2F-test results (244 problems). All results marked $\star$ were
-independently re-verified via \texttt{lake env lean}; unmarked baseline figures use
-the batch verifier with the corrections described in \autoref{sec:method_mcts}.}
+\caption{miniF2F-test results (244 problems). $\star$ = independently re-verified
+via \texttt{lake env lean} on a GPU node. $\dagger$ = batch verifier (corrected;
+see \autoref{sec:method_mcts}); independent re-verification in progress.}
 \label{tab:main_results}
 \begin{tabular}{@{}llccc@{}}
 \toprule
@@ -306,9 +315,9 @@ DeepSeek + LoRA V1 & whole-proof, $k=32$ & 45 & 18.4\% & $\star$ \\
 DeepSeek + LoRA V2 & whole-proof, $k=32$ & 41 & 16.8\% & $\star$ \\
 DeepSeek base & whole-proof, $k=64$ & 97 & 39.8\% & $\star$ \\
 DeepSeek base & whole-proof, $k=256$ & 97 & 39.8\% & $\star$ \\
-\textbf{DeepSeek + MCTS} & \textbf{tree search + $k=400$} & \textbf{119} & \textbf{48.8\%} & $\star$ \\
+\textbf{DeepSeek + BFS search} & \textbf{BFS depth$\leq$6 + $k=400$} & \textbf{119} & \textbf{48.8\%} & $\dagger$ \\
 \midrule
-ReProver \cite{reprover} & best-first search & -- & $\approx$26.5\% & -- \\
+ReProver \cite{leandojo} & best-first search & -- & $\approx$26.5\% & -- \\
 DeepSeek-Prover-V1.5-RL \cite{deepseek} & MCTS, $k \approx 3200$ & 147 & 60.2\% & -- \\
 \bottomrule
 \end{tabular}
@@ -489,9 +498,9 @@ The pass rate \emph{drops} from 47\% to 43\% between $k=32$ and $k=64$.
 This is not a true regression but a stochastic artifact: the two runs
 were independent (not seeded from each other), and the set of problems
 proved changes with each random sampling.
-The verified $k=32$ result found 32 number theory proofs; the verified
-$k=64$ run found 29 of those same problems \emph{plus} different ones,
-for a net of 29.
+The verified $k=32$ run found 32 number theory proofs; the independent
+$k=64$ run found only 29---a different mix, missing some problems $k=32$
+solved while finding others in their place.
 This illustrates that pass@1 estimates carry sampling variance at the
 problem level, especially for categories where success probability is
 close to the threshold.
@@ -646,11 +655,11 @@ On miniF2F, it is augmented with 14 universal fallback tactics
 After fine-tuning on the full Mathlib tactic dataset for 5 epochs
 (${\approx}250\text{K}$ training examples), ByT5 reaches 70/244 = 28.7\%, surpassing
 the published ReProver result of ${\approx}26.5\%$.
-However, a careful ablation reveals that this performance is almost entirely
-explained by the 14 fallback tactics, which mechanically close the
-straightforward miniF2F problems.
-Both the pretrained and analysis-fine-tuned ByT5 achieve $\approx$24\%,
-with the gains from more training data being modest (28.7\% vs.\ 24.2\%);
+However, comparing the pretrained and fine-tuned variants suggests this
+performance is almost entirely explained by the 14 fallback tactics, which
+mechanically close the straightforward miniF2F problems: the pretrained ByT5
+already achieves 24.2\%, with fine-tuning on the full Mathlib tactic corpus
+adding only 4.5 pp (28.7\% vs.\ 24.2\%);
 this suggests ByT5 contributes most usefully as a tactic-ranking mechanism
 that occasionally selects the right close from the fallback set, rather than
 as a proof-search engine.
@@ -722,8 +731,8 @@ deadlock silently under 4-bit quantization.
 These are problems whose formal statements contain the $\neq$ operator
 formalized in a way that produces unusual token sequences.
 The BF16 model does not hang on these problems.
-We skip these four in generation and count them as unattempted rather
-than failed.
+We skip these four in generation; they are counted as failures in the
+reported 244-problem totals.
 
 %-----------------------------------------------------------------------
 \section{Conclusion}
@@ -807,12 +816,6 @@ The Mathlib Community.
 The Lean 4 Mathematical Library.
 \url{https://leanprover-community.github.io/mathlib4_docs/}, 2024.
 
-\bibitem{reprover}
-Kaiyu Yang, Aidan Swope, Alex Gu, Rahul Chalamala, Peiyang Song, Shixing Yu,
-Saad Godil, Ryan Prenger, and Anima Anandkumar.
-LeanDojo: Theorem Proving with Retrieval-Augmented Language Models.
-\textit{Advances in Neural Information Processing Systems}, 2023.
-
 \bibitem{byt5}
 Linting Xue, Aditya Barua, Noah Constant, Rami Al-Rfou, Sharan Narang,
 Mihir Kale, Adam Roberts, and Colin Raffel.
@@ -823,7 +826,9 @@ ByT5: Towards a Token-Free Future with Pre-trained Byte-to-Byte Models.
 Kaiyu Yang, Aidan Swope, Alex Gu, Rahul Chalamala, Peiyang Song, Shixing Yu,
 Saad Godil, Ryan Prenger, and Anima Anandkumar.
 LeanDojo: Theorem Proving with Retrieval-Augmented Language Models.
-\url{https://github.com/lean-dojo/LeanDojo}, 2023.
+\textit{Advances in Neural Information Processing Systems}, 2023.
+(Also the source of the ReProver best-first search baseline; see
+\url{https://github.com/lean-dojo/ReProver}.)
 
 \bibitem{bitsandbytes}
 Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, and Luke Zettlemoyer.
