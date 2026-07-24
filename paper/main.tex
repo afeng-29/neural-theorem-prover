@@ -86,12 +86,12 @@ Starting from DeepSeek-Prover-V1.5-RL with whole-proof generation,
 we document a series of experiments whose failures are as informative as their successes.
 Whole-proof sampling reaches 39.8\% pass@1 at 64 samples per problem, then plateaus
 completely: going to 256 samples yields zero additional verified proofs.
-Adding a BFS tactic search (depth at most 6, width 8) improves the score to 48.8\%,
-but the mechanism is more nuanced than it first appears: of the 25
-problems uniquely solved by the tactic search configuration, only 8 are attributable to tree
+Adding a BFS tactic search (depth at most 6, width 8) improves the score to 47.1\%,
+but the mechanism is more nuanced than it first appears: of the 21
+problems uniquely solved by the tactic search configuration, only 4 are attributable to tree
 structure itself; the remaining 17 come from the larger whole-proof fallback budget
 (400 vs.\ 256 samples); and 3 problems solved by $k=256$ are not solved by tactic search,
-giving a net gain of $25 - 3 = 22$ problems.
+giving a net gain of $21 - 3 = 18$ problems.
 Two rounds of LoRA fine-tuning both degraded performance.
 We trace this failure to a distributional mismatch: 98\% of the available
 fine-tuning proofs are single-line tactic closers, while 63\% of the problems
@@ -122,7 +122,7 @@ Monte Carlo Tree Search with thousands of samples per problem.
 This project asks a more constrained question: how much of that performance
 can be recovered with a single GPU node, 4-bit quantized inference, and
 roughly 400 samples per problem?
-The headline answer is 48.8\%.
+The headline answer is 47.1\%.
 But the more useful answer lies in understanding \emph{why} the remaining
 gap persists despite everything we tried, and what each failed attempt
 reveals about the structure of the problem.
@@ -139,13 +139,13 @@ it can reach by the 64th attempt.
 \emph{Phase 2: BFS tactic search.}
 Adding BFS-guided tactic-level search partially breaks the plateau, but
 the contribution is smaller than it appears.
-Of the 25 problems the tactic search configuration uniquely solves, 8 are
+Of the 21 problems the tactic search configuration uniquely solves, 4 are
 genuinely attributable to the tree structure itself---short proofs
-(average 1.9 tactics) that whole-proof sampling never generates.
+(average 1.8 tactics) that whole-proof sampling never generates.
 The other 17 come from the whole-proof fallback having 400 samples
 instead of 256, not from tree search at all.
 Meanwhile 3 problems solved by $k=256$ are not solved by tactic search,
-so the net gain is $25 - 3 = 22$.
+so the net gain is $21 - 3 = 18$.
 \emph{Phase 3: fine-tuning.}
 Two rounds of LoRA fine-tuning, with progressively more training data and
 better hardware, both made things worse.
@@ -300,8 +300,7 @@ using \texttt{lake env lean} on a GPU node, independently of the batch verifier.
 \begin{table}[h]
 \centering
 \caption{miniF2F-test results (244 problems). $\star$ = independently re-verified
-via \texttt{lake env lean} on a GPU node. $\dagger$ = batch verifier (corrected;
-see \autoref{sec:method_mcts}); independent re-verification in progress.}
+via \texttt{lake env lean} on a GPU node.}
 \label{tab:main_results}
 \begin{tabular}{@{}llccc@{}}
 \toprule
@@ -315,7 +314,7 @@ DeepSeek + LoRA V1 & whole-proof, $k=32$ & 45 & 18.4\% & $\star$ \\
 DeepSeek + LoRA V2 & whole-proof, $k=32$ & 41 & 16.8\% & $\star$ \\
 DeepSeek base & whole-proof, $k=64$ & 97 & 39.8\% & $\star$ \\
 DeepSeek base & whole-proof, $k=256$ & 97 & 39.8\% & $\star$ \\
-\textbf{DeepSeek + BFS search} & \textbf{BFS depth$\leq$6 + $k=400$} & \textbf{119} & \textbf{48.8\%} & $\dagger$ \\
+\textbf{DeepSeek + BFS search} & \textbf{BFS depth$\leq$6 + $k=400$} & \textbf{115} & \textbf{47.1\%} & $\star$ \\
 \midrule
 ReProver \cite{leandojo} & best-first search & -- & $\approx$26.5\% & -- \\
 DeepSeek-Prover-V1.5-RL \cite{deepseek} & MCTS, $k \approx 3200$ & 147 & 60.2\% & -- \\
@@ -323,8 +322,8 @@ DeepSeek-Prover-V1.5-RL \cite{deepseek} & MCTS, $k \approx 3200$ & 147 & 60.2\% 
 \end{tabular}
 \end{table}
 
-The MCTS result of 48.8\% is our primary contribution: 9.0 percentage points
-above the whole-proof sampling ceiling of 39.8\%, and 24.2 pp above the
+The MCTS result of 47.1\% is our primary contribution: 7.3 percentage points
+above the whole-proof sampling ceiling of 39.8\%, and 22.5 pp above the
 simplest DeepSeek baseline.
 The ByT5 results are included for context; they are discussed in \autoref{sec:byt5}.
 
@@ -352,7 +351,7 @@ Run & Proved & Pass@1 & New verified proofs \\
 $k = 32$ & 60 & 24.6\% & -- \\
 $k = 64$ & 97 & 39.8\% & $+$37 \\
 $k = 256$ & 97 & 39.8\% & $\phantom{+}$0 \\
-MCTS ($k \approx 400$ total) & 119 & 48.8\% & $+$22 vs.\ verified $k=256$ \\
+MCTS ($k \approx 400$ total) & 115 & 47.1\% & $+$18 vs.\ verified $k=256$ \\
 \midrule
 Published ($k \approx 3200$) & 147 & 60.2\% & -- \\
 \bottomrule
@@ -399,7 +398,7 @@ trials.
 \begin{table}[h]
 \centering
 \caption{Problem-level overlap between MCTS and verified $k=256$ whole-proof
-sampling (244 problems). The 25 MCTS-unique problems are further decomposed
+sampling (244 problems). The 21 MCTS-unique problems are further decomposed
 by which component of the MCTS configuration found them.}
 \label{tab:overlap}
 \begin{tabular}{@{}lccc@{}}
@@ -407,21 +406,21 @@ by which component of the MCTS configuration found them.}
 Outcome & Problems & Fraction & Avg.\ proof steps \\
 \midrule
 Both methods proved & 94 & 38.5\% & 2.3 \\
-Only MCTS proved & 25 & 10.2\% & 10.9 \\
-\quad --- found by tree search & (8) & (3.3\%) & 1.9 \\
+Only MCTS proved & 21 & 8.6\% & 12.6 \\
+\quad --- found by tree search & (4) & (1.6\%) & 1.8 \\
 \quad --- found by whole-proof fallback & (17) & (7.0\%) & 15.2 \\
 Only $k=256$ proved & 3 & 1.2\% & -- \\
-Neither proved & 122 & 50.0\% & -- \\
+Neither proved & 126 & 51.6\% & -- \\
 \midrule
 \textit{Total} & 244 & & \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The 25 MCTS-unique problems decompose into two distinct groups with very
+The 21 MCTS-unique problems decompose into two distinct groups with very
 different explanations.
 
-\textbf{Eight problems found by tree search} (average 1.9 tactics, median 1).
+\textbf{Four problems found by tree search} (average 1.8 tactics).
 These are short proofs---many are single-tactic solutions like
 \texttt{nlinarith} applied after a \texttt{subst}---where the correct
 tactic was either absent from the whole-proof model's distribution or
@@ -441,8 +440,8 @@ that required a lucky draw from the model's distribution, and 400
 attempts exceeded the threshold while 256 did not.
 
 This decomposition reveals a confound in interpreting the MCTS result.
-The ``9 pp improvement from MCTS'' conflates two contributions:
-roughly 3.3 pp from tree search structure itself, and roughly 7 pp from
+The ``7.3 pp improvement from MCTS'' conflates two contributions:
+roughly 1.6 pp from tree search structure itself, and roughly 7 pp from
 the fallback's larger sample budget.
 To cleanly isolate the tree search contribution, one would need a
 matched $k=400$ whole-proof baseline, which we did not run.
@@ -472,11 +471,11 @@ through MCTS) is omitted for brevity.}
 \toprule
 Category & Total & $k=32$ & $k=64$ & $k=256$ & MCTS & MCTS gain \\
 \midrule
-Algebra & 88 & 22\,(25\%) & 51\,(58\%) & 52\,(59\%) & 58\,(66\%) & $+$6 \\
+Algebra & 88 & 22\,(25\%) & 51\,(58\%) & 52\,(59\%) & 57\,(65\%) & $+$5 \\
 Number theory & 68 & 32\,(47\%) & 29\,(43\%) & 29\,(43\%) & 32\,(47\%) & $+$3 \\
-Competition (AMC/AIME/IMO) & 80 & 5\,(6\%) & 14\,(18\%) & 13\,(16\%) & 26\,(33\%) & $+$13 \\
+Competition (AMC/AIME/IMO) & 80 & 5\,(6\%) & 14\,(18\%) & 13\,(16\%) & 23\,(29\%) & $+$10 \\
 \midrule
-All & 244 & 60\,(24.6\%) & 97\,(39.8\%) & 97\,(39.8\%) & 119\,(48.8\%) & $+$22 \\
+All & 244 & 60\,(24.6\%) & 97\,(39.8\%) & 97\,(39.8\%) & 115\,(47.1\%) & $+$18 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -509,15 +508,15 @@ somewhat different set of problems.
 
 \textbf{Competition problems are where MCTS earns most of its keep.}
 At $k=256$, only 13/80 competition problems are solved (16\%).
-MCTS doubles this to 26/80 (33\%).
-These 13 additional competition proofs are the most meaningful output of
+MCTS raises this to 23/80 (29\%).
+These 10 additional competition proofs are the most meaningful output of
 the tree search: they are problems where the correct proof requires
 exactly the right sequence of 2--5 tactics, and tree search finds this
 sequence even though no 256-sample whole-proof attempt ever produced it.
 
-Nevertheless, 67\% of competition problems (54/80) remain unsolved by
+Nevertheless, 71\% of competition problems (57/80) remain unsolved by
 any configuration.
-These 54 problems are the core of the gap to 60.2\%.
+These 57 problems are the core of the gap to 60.2\%.
 Their proofs require either long structured arguments ($>6$ tactics)
 that exceed BFS depth, or uncommon Mathlib lemmas that the model's
 distribution assigns very low probability to.
@@ -580,7 +579,7 @@ The 15 problems that LoRA V2 fails to prove but the base model solves
 at $k=32$ are all multi-step proofs; the fine-tuned model generates the
 wrong (truncated) proof for each of them.
 
-Among the 119 problems solved by the best MCTS configuration, 75 (63\%)
+Among the 115 problems solved by the best MCTS configuration, 73 (63\%)
 require proofs with more than one tactic step.
 Fine-tuning suppressed exactly this capability.
 The mismatch between training distribution (98\% single-step) and target
@@ -595,7 +594,7 @@ Effective fine-tuning requires training pairs whose proof-length and
 difficulty distributions match the target benchmark.
 \end{obs}
 
-\subsection{Why 48.8\% and Not 60\%}
+\subsection{Why 47.1\% and Not 60\%}
 \label{sec:gap}
 
 The published 60.2\% result \cite{deepseek} differs from ours along several
@@ -618,15 +617,15 @@ This lets it make productive use of 3200 samples in a way that our
 sequential (tree search then fallback) approach does not.
 
 \textbf{The hard tail is structural.}
-Of the 244 test problems, 122 (50\%) are solved by neither whole-proof
+Of the 244 test problems, 126 (51.6\%) are solved by neither whole-proof
 sampling nor our MCTS configuration.
-These problems are concentrated in the competition category (54/80 unsolved).
+These problems are concentrated in the competition category (57/80 unsolved).
 Inspection of their structures suggests two failure modes: proofs longer
 than our BFS depth limit of 6 tactics, and proofs that require highly
 specific Mathlib API calls (\texttt{Nat.Coprime}, \texttt{Int.emod\_emod\_of\_dvd},
 \texttt{Finset.sum\_congr}, etc.) that the model's distribution assigns very
 low probability.
-The published system solves $147 - 119 = 28$ of these 122 problems.
+The published system solves $147 - 115 = 32$ of these 126 problems.
 This is plausibly explained by the deeper effective search (via integrated tree
 search with 3200 samples) combined with the full-precision model having a
 slightly better-calibrated distribution over rare Mathlib lemmas.
@@ -692,7 +691,8 @@ the result from $\approx$4\% to 99.6\%;
 (b) after fixing the regex, two subtler bugs in line-range attribution
 still inflated the score from the true 30.7\% to a claimed 58.6\%;
 (c) after fixing both (the range extension and the theorem-header filter),
-the clean run produced the verified 48.8\%.
+the clean run produced 48.8\% by the corrected batch verifier; independent
+re-verification via \texttt{lake env lean} subsequently confirmed 47.1\%.
 The lesson is that in-process batch verification of Lean proofs is
 substantially harder to get right than it appears, and any result that
 looks surprisingly good should be re-verified by an independent method
@@ -739,8 +739,8 @@ reported 244-problem totals.
 %-----------------------------------------------------------------------
 
 We evaluated DeepSeek-Prover-V1.5-RL on miniF2F under constrained compute,
-reaching 48.8\% with a tree search and fallback configuration---9 percentage
-points above the whole-proof sampling ceiling and 24 pp above the simplest
+reaching 47.1\% with a tree search and fallback configuration---7.3 percentage
+points above the whole-proof sampling ceiling and 22 pp above the simplest
 baseline.
 The path there was not straightforward, and the obstacles are the
 substance of the result.
@@ -757,13 +757,13 @@ The model's sampling distribution does not cover the harder half of the
 benchmark regardless of how many samples are drawn.
 
 \item \textbf{Tree search helps, but less than the headline suggests.}
-Of the 25 problems uniquely solved by MCTS (but not by $k=256$), 8 are
+Of the 21 problems uniquely solved by MCTS (but not by $k=256$), 4 are
 genuinely attributable to tree structure (short proofs found at BFS depth 1--2),
 and 17 come from the larger whole-proof sample budget in the fallback phase
 (400 vs.\ 256 samples).
 Since 3 problems solved by $k=256$ are not solved by MCTS, the net gain is
-$25 - 3 = 22$.
-Pure tree search contributes $\approx$3 pp; the remaining $\approx$6 pp is
+$21 - 3 = 18$.
+Pure tree search contributes $\approx$1.6 pp; the remaining $\approx$5.7 pp is
 additional sampling.
 
 \item \textbf{Fine-tuning on the wrong distribution actively hurts.}
@@ -776,7 +776,7 @@ any fine-tuning experiment where the training and target difficulty
 distributions are not carefully matched.
 
 \item \textbf{The gap to 60\% is structural, not computational.}
-Closing from 48.8\% to 60.2\% requires solving 28 additional problems,
+Closing from 47.1\% to 60.2\% requires solving 32 additional problems,
 concentrated in the competition category.
 These problems require proof structures---long tactic chains ($>6$ steps),
 uncommon Mathlib API calls---that neither more whole-proof samples nor
