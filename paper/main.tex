@@ -65,13 +65,17 @@
 
 \usepackage{booktabs}
 \usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+
+\setlength{\emergencystretch}{3em}
 
 \bibliographystyle{plain}
 
-\title{Neural Theorem Proving on miniF2F: \\
+\title[Neural Theorem Proving on miniF2F]{Neural Theorem Proving on miniF2F: \\
 Scaling, Tree Search, and the Limits of Fine-Tuning}
 
-\author{Aslan Feng}
+\author[\ ]{Aslan Feng}
 
 \date{Columbia Business School REU, Summer 2026 \\
 Mentor: Professor Namkoong}
@@ -104,6 +108,13 @@ gap that more samples would close.
 
 \maketitle
 
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[C]{\small\scshape Neural Theorem Proving on miniF2F}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\setlength{\headheight}{14pt}
+
 \tableofcontents
 
 %-----------------------------------------------------------------------
@@ -116,8 +127,12 @@ mathematics---in particular, on Lean 4 and its Mathlib library---has led
 to dramatic improvements on standard benchmarks.
 DeepSeek-Prover-V1.5-RL \cite{deepseek} achieves 60.2\% on the miniF2F
 benchmark \cite{minif2f}, which consists of 244 competition mathematics problems
-formalized in Lean 4, using reinforcement learning from proof feedback and
+formalized in Lean 4~\cite{lean4}, using reinforcement learning from proof feedback and
 Monte Carlo Tree Search with thousands of samples per problem.
+Generative language models for formal proving were first scaled by Polu and
+Han~\cite{polu2020}; subsequent systems applied tree search~\cite{hypertree},
+retrieval augmentation~\cite{leandojo}, and informal-proof
+guidance~\cite{dsp} to push the frontier further.
 
 This project asks a more constrained question: how much of that performance
 can be recovered with a single GPU node, 4-bit quantized inference, and
@@ -275,7 +290,7 @@ BFS configuration reported in \autoref{tab:main_results}.
 
 \subsection{LoRA Fine-Tuning}
 
-We conducted two rounds of LoRA fine-tuning on the DeepSeek-Prover base model,
+We conducted two rounds of LoRA fine-tuning~\cite{lora} on the DeepSeek-Prover base model,
 both using whole-proof training pairs (Lean 4 file stub, complete proof body)
 to match the inference format.
 
@@ -302,6 +317,7 @@ using \texttt{lake env lean} on a GPU node, independently of the batch verifier.
 \caption{miniF2F-test results (244 problems). $\star$ = independently re-verified
 via \texttt{lake env lean} on a GPU node.}
 \label{tab:main_results}
+\resizebox{\linewidth}{!}{%
 \begin{tabular}{@{}llccc@{}}
 \toprule
 Model & Method & Proved & Pass@1 & Verified \\
@@ -319,7 +335,8 @@ DeepSeek base & whole-proof, $k=256$ & 97 & 39.8\% & $\star$ \\
 ReProver \cite{leandojo} & best-first search & -- & $\approx$26.5\% & -- \\
 DeepSeek-Prover-V1.5-RL \cite{deepseek} & MCTS, $k \approx 3200$ & 147 & 60.2\% & -- \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
 
 The MCTS result of 47.1\% is our primary contribution: 7.3 percentage points
@@ -467,6 +484,7 @@ all configurations.
 pass rates. The induction category (8 problems, stable at 3 proved by $k=64$
 through MCTS) is omitted for brevity.}
 \label{tab:categories}
+\resizebox{\linewidth}{!}{%
 \begin{tabular}{@{}lcccccc@{}}
 \toprule
 Category & Total & $k=32$ & $k=64$ & $k=256$ & MCTS & MCTS gain \\
@@ -477,7 +495,8 @@ Competition (AMC/AIME/IMO) & 80 & 5\,(6\%) & 14\,(18\%) & 13\,(16\%) & 23\,(29\%
 \midrule
 All & 244 & 60\,(24.6\%) & 97\,(39.8\%) & 97\,(39.8\%) & 115\,(47.1\%) & $+$18 \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
 
 Several features of this table are worth examining in detail.
@@ -485,7 +504,7 @@ Several features of this table are worth examining in detail.
 \textbf{Algebra saturates quickly.}
 The pass rate jumps from 25\% at $k=32$ to 58\% at $k=64$---the largest
 single-step gain of any category---then barely moves to 59\% at $k=256$
-and 66\% with MCTS.
+and 65\% with MCTS.
 Algebra problems that the model can solve tend to have short, mechanically
 derivable proofs (\texttt{linarith}, \texttt{ring}, \texttt{nlinarith}),
 and the model finds these quickly.
@@ -798,7 +817,8 @@ Computations were carried out on the CBS Research Grid at Columbia Business
 School.
 
 %-----------------------------------------------------------------------
-\begin{thebibliography}{9}
+\clearpage
+\begin{thebibliography}{99}
 
 \bibitem{deepseek}
 DeepSeek-AI.
@@ -840,6 +860,35 @@ Huaiyuan Ying, Zijian Wu, Yihan Geng, Jiayu Wang, Dahua Lin, and Bo Dai.
 Lean Workbook: A Large-Scale Lean Problem Set Formalized from Natural Language
 Math Problems.
 \textit{arXiv preprint arXiv:2406.03847}, 2024.
+
+\bibitem{lean4}
+Leonardo de Moura and Sebastian Ullrich.
+The Lean 4 Theorem Prover and Programming Language.
+In \textit{Proceedings of the 28th International Conference on Automated
+Deduction (CADE-28)}, 2021.
+
+\bibitem{lora}
+Edward Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li,
+Shean Wang, Lu Wang, and Weizhu Chen.
+LoRA: Low-Rank Adaptation of Large Language Models.
+\textit{International Conference on Learning Representations}, 2022.
+
+\bibitem{hypertree}
+Guillaume Lample, Marie-Anne Lachaux, Timoth\'{e}e Lacroix, Xavier Martinet,
+Amaury Hayat, Gabriel Ebner, and Aur\'{e}lien Rodriguez.
+HyperTree Proof Search for Neural Theorem Proving.
+\textit{Advances in Neural Information Processing Systems}, 2022.
+
+\bibitem{dsp}
+Albert Q.\ Jiang, Sean Welleck, Jin Peng Zhou, Timoth\'{e}e Lacroix,
+Jiacheng Liu, Wenda Li, Mateja Jamnik, Guillaume Lample, and Yuhuai Wu.
+Draft, Sketch, and Prove: Guiding Formal Theorem Provers with Informal Proofs.
+\textit{International Conference on Learning Representations}, 2023.
+
+\bibitem{polu2020}
+Jakub Polu and Han M.\ Han.
+Generative Language Modeling for Automated Theorem Proving.
+\textit{arXiv preprint arXiv:2009.03393}, 2020.
 
 \end{thebibliography}
 
